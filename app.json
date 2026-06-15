@@ -1,29 +1,32 @@
 {
   "expo": {
-    "name": "DoomNameApp",
-    "slug": "DoomNameApp",
+    "name": "DoomName",
+    "slug": "doomname",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "scheme": "doomname",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "fr.dahuconcept.doomname"
     },
     "android": {
+      "package": "fr.dahuconcept.doomname",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
+        "backgroundColor": "#d97757"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+  
+    ],
+    "extra": {
+      "apiBase": "https://domainwatch-production-1943.up.railway.app"
     }
   }
 }
