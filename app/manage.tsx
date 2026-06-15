@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react';
+import * as Linking from 'expo-linking';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, useColorScheme, ActivityIndicator,
   FlatList, Switch, Alert, ScrollView
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useColors, Radius } from '../constants/theme';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 
 export default function ManageScreen() {
   const dark = useColorScheme() === 'dark';
-  const s = styles(dark);
+  const c = useColors(dark);
 
   const [step, setStep] = useState<'email' | 'sent' | 'manage'>('email');
   const [email, setEmail] = useState('');
@@ -22,7 +25,6 @@ export default function ManageScreen() {
   const [newDomain, setNewDomain] = useState('');
   const [adding, setAdding] = useState(false);
 
-  // Vérifie si une session est déjà sauvegardée
   useEffect(() => {
     AsyncStorage.getItem('doomname_email').then(saved => {
       if (saved) {
@@ -31,6 +33,29 @@ export default function ManageScreen() {
         loadSubs(saved);
       }
     });
+  }, []);
+
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      const { queryParams } = Linking.parse(url);
+      if (queryParams?.token) {
+        setToken(queryParams.token as string);
+        setStep('sent');
+      }
+    });
+
+    Linking.getInitialURL().then(url => {
+      if (url) {
+        const { queryParams } = Linking.parse(url);
+        if (queryParams?.token) {
+          setToken(queryParams.token as string);
+          setStep('sent');
+          verifyToken();
+        }
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   const requestMagicLink = async () => {
@@ -153,92 +178,111 @@ export default function ManageScreen() {
     setToken('');
   };
 
-  // ── Étape 1 : saisie email ──
+  const inputStyle = [s.input, { backgroundColor: c.surface2, borderColor: c.borderMd, color: c.text }];
+  const btnStyle = [s.button, { backgroundColor: c.accent }];
+
   if (step === 'email') return (
-    <ScrollView style={s.screen} contentContainerStyle={s.container}>
-      <Text style={s.title}>🔑 Mes alertes</Text>
-      <Text style={s.subtitle}>Entrez votre email pour recevoir un lien de connexion</Text>
+    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={s.container}>
+      <Text style={[s.subtitle, { color: c.textMuted }]}>Entrez votre email pour recevoir un lien de connexion</Text>
       <TextInput
-        style={s.input} placeholder="votre@email.com"
-        placeholderTextColor={dark ? '#6b6b67' : '#aaa'}
+        style={inputStyle} placeholder="votre@email.com"
+        placeholderTextColor={c.textDim}
         value={email} onChangeText={setEmail}
         autoCapitalize="none" keyboardType="email-address"
       />
-      <TouchableOpacity style={s.button} onPress={requestMagicLink} disabled={loading}>
+      <TouchableOpacity style={btnStyle} onPress={requestMagicLink} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Recevoir le lien</Text>}
       </TouchableOpacity>
-      {error ? <Text style={s.error}>{error}</Text> : null}
+      {error ? (
+        <View style={[s.errorBox, { backgroundColor: c.dangerDim, borderColor: c.dangerBorder }]}>
+          <Text style={[s.errorText, { color: c.danger }]}>{error}</Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 
-  // ── Étape 2 : lien envoyé, saisie token ──
   if (step === 'sent') return (
-    <ScrollView style={s.screen} contentContainerStyle={s.container}>
-      <Text style={s.title}>📧 Vérifiez vos emails</Text>
-      <Text style={s.subtitle}>Un lien a été envoyé à {email}. Copiez le token depuis l'URL du lien et collez-le ici.</Text>
+    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={s.container}>
+      <Text style={[s.subtitle, { color: c.textMuted }]}>
+        Un lien a été envoyé à {email}. Copiez le token depuis l'URL du lien et collez-le ici.
+      </Text>
       <TextInput
-        style={s.input} placeholder="Token (depuis l'URL reçue)"
-        placeholderTextColor={dark ? '#6b6b67' : '#aaa'}
+        style={inputStyle} placeholder="Token (depuis l'URL reçue)"
+        placeholderTextColor={c.textDim}
         value={token} onChangeText={setToken}
         autoCapitalize="none" autoCorrect={false}
       />
-      <TouchableOpacity style={s.button} onPress={verifyToken} disabled={loading}>
+      <TouchableOpacity style={btnStyle} onPress={verifyToken} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Valider</Text>}
       </TouchableOpacity>
       <TouchableOpacity onPress={() => setStep('email')} style={{ marginTop: 16 }}>
-        <Text style={{ color: '#d97757', textAlign: 'center' }}>← Retour</Text>
+        <Text style={{ color: c.accent, textAlign: 'center' }}>← Retour</Text>
       </TouchableOpacity>
-      {error ? <Text style={s.error}>{error}</Text> : null}
+      {error ? (
+        <View style={[s.errorBox, { backgroundColor: c.dangerDim, borderColor: c.dangerBorder }]}>
+          <Text style={[s.errorText, { color: c.danger }]}>{error}</Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 
-  // ── Étape 3 : liste des abonnements ──
   return (
-    <View style={s.screen}>
-      <View style={s.header}>
-        <Text style={s.userEmail}>{userEmail}</Text>
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <View style={[s.header, { borderBottomColor: c.border }]}>
+        <Text style={[s.userEmail, { color: c.textMuted }]}>{userEmail}</Text>
         <TouchableOpacity onPress={logout}>
-          <Text style={{ color: '#d97757', fontSize: 13 }}>Déconnexion</Text>
+          <Text style={{ color: c.accent, fontSize: 13 }}>Déconnexion</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Ajout domaine */}
-      <View style={s.addRow}>
-        <TextInput
-          style={[s.input, { flex: 1, marginBottom: 0 }]}
-          placeholder="Ajouter un domaine..."
-          placeholderTextColor={dark ? '#6b6b67' : '#aaa'}
-          value={newDomain} onChangeText={setNewDomain}
-          autoCapitalize="none" autoCorrect={false}
-        />
-        <TouchableOpacity style={s.addButton} onPress={addDomain} disabled={adding}>
+      <View style={[s.addRow, { borderBottomColor: c.border }]}>
+        <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.borderMd }]}>
+          <TextInput
+            style={[s.inputInner, { color: c.text }]}
+            placeholder="Ajouter un domaine..."
+            placeholderTextColor={c.textDim}
+            value={newDomain} onChangeText={setNewDomain}
+            autoCapitalize="none" autoCorrect={false}
+            returnKeyType="done" onSubmitEditing={addDomain}
+          />
+          {newDomain.length > 0 && (
+            <TouchableOpacity onPress={() => setNewDomain('')} style={s.clearBtn} hitSlop={8}>
+              <Ionicons name="close" size={18} color={c.textDim} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity style={[s.addButton, { backgroundColor: c.accent }]} onPress={addDomain} disabled={adding}>
           {adding ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.buttonText}>+</Text>}
         </TouchableOpacity>
       </View>
 
-      {error ? <Text style={[s.error, { marginHorizontal: 16 }]}>{error}</Text> : null}
+      {error ? (
+        <View style={[s.errorBox, { marginHorizontal: 16, marginTop: 8, backgroundColor: c.dangerDim, borderColor: c.dangerBorder }]}>
+          <Text style={[s.errorText, { color: c.danger }]}>{error}</Text>
+        </View>
+      ) : null}
 
-      {loading ? <ActivityIndicator color="#d97757" style={{ marginTop: 32 }} /> : (
+      {loading ? <ActivityIndicator color={c.accent} style={{ marginTop: 32 }} /> : (
         <FlatList
           data={subs}
           keyExtractor={item => item.id.toString()}
           contentContainerStyle={{ padding: 16, gap: 10 }}
-          ListEmptyComponent={<Text style={s.empty}>Aucune alerte pour le moment</Text>}
+          ListEmptyComponent={<Text style={[s.empty, { color: c.textDim }]}>Aucune alerte pour le moment</Text>}
           renderItem={({ item }) => (
-            <View style={s.card}>
+            <View style={[s.card, { backgroundColor: c.surface, borderColor: c.border }]}>
               <View style={{ flex: 1 }}>
-                <Text style={s.domain}>{item.domain}</Text>
-                <Text style={s.date}>
+                <Text style={[s.domain, { color: c.text }]}>{item.domain}</Text>
+                <Text style={[s.date, { color: c.textDim }]}>
                   {new Date(item.created_at).toLocaleDateString('fr-FR')}
                 </Text>
               </View>
               <Switch
                 value={item.active}
                 onValueChange={() => toggleSub(item.id, item.active)}
-                trackColor={{ true: '#d97757' }}
+                trackColor={{ true: c.accent }}
               />
               <TouchableOpacity onPress={() => deleteSub(item.id, item.domain)} style={{ marginLeft: 12 }}>
-                <Text style={{ color: '#dc2626', fontSize: 18 }}>🗑</Text>
+                <Text style={{ color: c.danger, fontSize: 18 }}>🗑</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -248,40 +292,41 @@ export default function ManageScreen() {
   );
 }
 
-const styles = (dark: boolean) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: dark ? '#0f0f0e' : '#f9f9f8' },
-  container: { padding: 24, paddingTop: 40 },
-  title: { fontSize: 22, fontWeight: '700', color: dark ? '#eceae4' : '#1a1a18', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: dark ? '#8a8880' : '#6b6b67', marginBottom: 24 },
+const s = StyleSheet.create({
+  container: { padding: 24, paddingTop: 32 },
+  subtitle: { fontSize: 14, marginBottom: 24, lineHeight: 20 },
   input: {
-    height: 48, borderRadius: 10, paddingHorizontal: 14, marginBottom: 12,
-    backgroundColor: dark ? '#1e1e1c' : '#ffffff',
-    borderWidth: 1, borderColor: dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-    color: dark ? '#eceae4' : '#1a1a18', fontSize: 15,
+    height: 48, borderRadius: Radius.md, paddingHorizontal: 14, marginBottom: 12,
+    borderWidth: 1, fontSize: 15,
   },
   button: {
-    height: 48, borderRadius: 10, backgroundColor: '#d97757',
+    height: 48, borderRadius: Radius.md,
     justifyContent: 'center', alignItems: 'center', marginBottom: 12,
   },
   buttonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  error: { color: '#dc2626', marginTop: 8, textAlign: 'center' },
+  errorBox: { borderRadius: Radius.md, borderWidth: 1, padding: 12, marginTop: 8 },
+  errorText: { fontSize: 13 },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     padding: 16, borderBottomWidth: 1,
-    borderBottomColor: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)',
   },
-  userEmail: { fontSize: 13, color: dark ? '#8a8880' : '#6b6b67' },
-  addRow: { flexDirection: 'row', gap: 8, padding: 16, paddingBottom: 8 },
+  userEmail: { fontSize: 13 },
+  addRow: { flexDirection: 'row', gap: 8, padding: 16, paddingBottom: 12, borderBottomWidth: 1 },
+  inputWrap: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    height: 48, borderRadius: Radius.md, borderWidth: 1,
+  },
+  inputInner: { flex: 1, height: '100%', fontSize: 15, paddingHorizontal: 14 },
+  clearBtn: { paddingHorizontal: 10 },
   addButton: {
-    width: 48, height: 48, borderRadius: 10, backgroundColor: '#d97757',
+    width: 48, height: 48, borderRadius: Radius.md,
     justifyContent: 'center', alignItems: 'center',
   },
   card: {
-    flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12,
-    backgroundColor: dark ? '#1e1e1c' : '#ffffff',
-    borderWidth: 1, borderColor: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
+    flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: Radius.lg,
+    borderWidth: 1,
   },
-  domain: { fontSize: 15, fontWeight: '600', color: dark ? '#eceae4' : '#1a1a18' },
-  date: { fontSize: 12, color: dark ? '#6b6b67' : '#aaa', marginTop: 2 },
-  empty: { textAlign: 'center', color: dark ? '#6b6b67' : '#aaa', marginTop: 40, fontSize: 14 },
+  domain: { fontSize: 15, fontWeight: '600' },
+  date: { fontSize: 12, marginTop: 2 },
+  empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
 });

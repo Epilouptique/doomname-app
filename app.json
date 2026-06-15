@@ -4,9 +4,14 @@
     "slug": "doomname",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/doomname-logo-light-512.png",
     "scheme": "doomname",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/doomname-logo-dark.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f0f0e"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "fr.dahuconcept.doomname"
@@ -14,19 +19,24 @@
     "android": {
       "package": "fr.dahuconcept.doomname",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/doomname-logo-light-512.png",
         "backgroundColor": "#d97757"
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/doomname-logo-light-512.png"
     },
     "plugins": [
       "expo-router"
-  
     ],
     "extra": {
       "apiBase": "https://domainwatch-production-1943.up.railway.app"
-    }
+    },
+    "splash": {
+  "image": "./assets/splash.png",
+  "resizeMode": "contain",
+  "backgroundColor": "#0f0f0e"
+}
   }
+  
 }
