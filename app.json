@@ -7,11 +7,6 @@
     "icon": "./assets/doomname-logo-light-512.png",
     "scheme": "doomname",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/doomname-logo-dark.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0f0f0e"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "fr.dahuconcept.doomname"
@@ -27,16 +22,19 @@
       "favicon": "./assets/doomname-logo-light-512.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 300,
+          "resizeMode": "contain",
+          "backgroundColor": "#0f0f0e"
+        }
+      ]
     ],
     "extra": {
       "apiBase": "https://domainwatch-production-1943.up.railway.app"
-    },
-    "splash": {
-  "image": "./assets/splash.png",
-  "resizeMode": "contain",
-  "backgroundColor": "#0f0f0e"
-}
+    }
   }
-  
 }
