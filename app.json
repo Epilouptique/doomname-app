@@ -24,23 +24,21 @@
     "plugins": [
       "expo-router",
       [
-[
-  "expo-splash-screen",
-  {
-    "enableFullScreenImage_legacy": true,
-    "resizeMode": "cover",
-    "backgroundColor": "#0f0f0e",
-    "android": {
-      "image": "./assets/splash.png",
-      "backgroundColor": "#0f0f0e"
-    },
-    "ios": {
-      "image": "./assets/splash.png",
-      "backgroundColor": "#0f0f0e"
-    }
-  }
-]
-    ]
+        "expo-splash-screen",
+        {
+          "enableFullScreenImage_legacy": true,
+          "resizeMode": "cover",
+          "backgroundColor": "#0f0f0e",
+          "android": {
+            "image": "./assets/splash.png",
+            "backgroundColor": "#0f0f0e"
+          },
+          "ios": {
+            "image": "./assets/splash.png",
+            "backgroundColor": "#0f0f0e"
+          }
+        }
+      ]
     ],
     "extra": {
       "apiBase": "https://domainwatch-production-1943.up.railway.app",
