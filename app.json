@@ -24,17 +24,30 @@
     "plugins": [
       "expo-router",
       [
-        "expo-splash-screen",
-        {
-          "image": "./assets/splash.png",
-          "imageWidth": 300,
-          "resizeMode": "contain",
-          "backgroundColor": "#0f0f0e"
-        }
-      ]
+[
+  "expo-splash-screen",
+  {
+    "enableFullScreenImage_legacy": true,
+    "resizeMode": "cover",
+    "backgroundColor": "#0f0f0e",
+    "android": {
+      "image": "./assets/splash.png",
+      "backgroundColor": "#0f0f0e"
+    },
+    "ios": {
+      "image": "./assets/splash.png",
+      "backgroundColor": "#0f0f0e"
+    }
+  }
+]
+    ]
     ],
     "extra": {
-      "apiBase": "https://domainwatch-production-1943.up.railway.app"
+      "apiBase": "https://domainwatch-production-1943.up.railway.app",
+      "router": {},
+      "eas": {
+        "projectId": "04249caf-a88f-47d7-bbfe-93df7e3e4390"
+      }
     }
   }
 }
