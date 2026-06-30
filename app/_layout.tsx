@@ -82,23 +82,16 @@ export default function RootLayout() {
           }}
         />
         <Tabs.Screen
-          name="developer"
+          name="settings"
           options={{
-            tabBarLabel: 'API',
+            tabBarLabel: 'Paramètres',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="code-slash-outline" size={size} color={color} />
+              <Ionicons name="settings-outline" size={size} color={color} />
             ),
           }}
         />
-        <Tabs.Screen
-          name="cgv"
-          options={{
-            tabBarLabel: 'CGV',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="document-text-outline" size={size} color={color} />
-            ),
-          }}
-        />
+        <Tabs.Screen name="developer" options={{ href: null, tabBarLabel: 'API' }} />
+        <Tabs.Screen name="cgv" options={{ href: null, tabBarLabel: 'CGV' }} />
       </Tabs>
     </>
   );

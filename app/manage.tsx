@@ -28,6 +28,9 @@ export default function ManageScreen() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [emailAlertsEnabled, setEmailAlertsEnabled] = useState(true);
+  const [graceAlertsEnabled, setGraceAlertsEnabled] = useState(true);
 
   useEffect(() => {
     AsyncStorage.getItem('doomname_email').then(saved => {
@@ -43,8 +46,10 @@ export default function ManageScreen() {
     const subscription = Linking.addEventListener('url', ({ url }) => {
       const { queryParams } = Linking.parse(url);
       if (queryParams?.token) {
-        setToken(queryParams.token as string);
+        const t = queryParams.token as string;
+        setToken(t);
         setStep('sent');
+        verifyToken(t);
       }
     });
 
@@ -52,9 +57,10 @@ export default function ManageScreen() {
       if (url) {
         const { queryParams } = Linking.parse(url);
         if (queryParams?.token) {
-          setToken(queryParams.token as string);
+          const t = queryParams.token as string;
+          setToken(t);
           setStep('sent');
-          verifyToken();
+          verifyToken(t);
         }
       }
     });
@@ -82,8 +88,8 @@ export default function ManageScreen() {
     }
   };
 
-  const verifyToken = async () => {
-    const t = token.trim();
+  const verifyToken = async (tokenOverride?: string) => {
+    const t = (tokenOverride ?? token).trim();
     if (!t) return;
     setLoading(true);
     setError('');
@@ -116,6 +122,26 @@ export default function ManageScreen() {
     } finally {
       setLoading(false);
     }
+    loadSettings(mail);
+  };
+
+  const loadSettings = async (mail: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/manage/settings?email=${encodeURIComponent(mail)}`);
+      const data = await res.json();
+      setEmailAlertsEnabled(data.email_alerts_enabled !== false);
+      setGraceAlertsEnabled(data.grace_alerts_enabled !== false);
+    } catch { /* préférences par défaut (activées) en cas d'échec */ }
+  };
+
+  const updateSettings = async (next: { email_alerts_enabled?: boolean; grace_alerts_enabled?: boolean }) => {
+    try {
+      await fetch(`${API_BASE}/api/manage/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail, ...next })
+      });
+    } catch { /* la prochaine ouverture rechargera l'état réel */ }
   };
 
   const toggleSub = async (id: number, currentActive: boolean) => {
@@ -189,7 +215,7 @@ export default function ManageScreen() {
   const currentPage = Math.min(Math.max(1, page), totalPages);
   const pagedSubs = filteredSubs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const inputStyle = [s.input, { backgroundColor: c.surface2, borderColor: c.borderMd, color: c.text }];
+  const inputStyle = [s.input, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5, color: c.text }];
   const btnStyle = [s.button, { backgroundColor: c.accent }];
 
   if (step === 'email') return (
@@ -245,15 +271,46 @@ export default function ManageScreen() {
           <TouchableOpacity onPress={() => { setSearchOpen(!searchOpen); if (searchOpen) { setSearch(''); setPage(1); } }}>
             <Ionicons name="search-outline" size={18} color={searchOpen ? c.accent : c.textMuted} />
           </TouchableOpacity>
+          <TouchableOpacity onPress={() => setSettingsOpen(!settingsOpen)}>
+            <Ionicons name="options-outline" size={18} color={settingsOpen ? c.accent : c.textMuted} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={logout}>
             <Text style={{ color: c.accent, fontSize: 13 }}>Déconnexion</Text>
           </TouchableOpacity>
         </View>
       </View>
 
+      {settingsOpen && (
+        <View style={[s.settingsPanel, { borderBottomColor: c.border }]}>
+          <Text style={[s.settingsPanelTitle, { color: c.textDim }]}>Alertes</Text>
+          <View style={s.settingsRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.settingsRowTitle, { color: c.text }]}>Alertes e-mail</Text>
+              <Text style={[s.settingsRowDesc, { color: c.textDim }]}>Domaine surveillé devenu disponible</Text>
+            </View>
+            <Switch
+              value={emailAlertsEnabled}
+              onValueChange={v => { setEmailAlertsEnabled(v); updateSettings({ email_alerts_enabled: v }); }}
+              trackColor={{ true: c.accent }}
+            />
+          </View>
+          <View style={s.settingsRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.settingsRowTitle, { color: c.text }]}>Période de grâce</Text>
+              <Text style={[s.settingsRowDesc, { color: c.textDim }]}>Grâce, rédemption ou suppression</Text>
+            </View>
+            <Switch
+              value={graceAlertsEnabled}
+              onValueChange={v => { setGraceAlertsEnabled(v); updateSettings({ grace_alerts_enabled: v }); }}
+              trackColor={{ true: c.accent }}
+            />
+          </View>
+        </View>
+      )}
+
       {searchOpen && (
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-          <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.borderMd }]}>
+          <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5 }]}>
             <TextInput
               style={[s.inputInner, { color: c.text }]}
               placeholder="Rechercher un domaine…"
@@ -267,7 +324,7 @@ export default function ManageScreen() {
       )}
 
       <View style={[s.addRow, { borderBottomColor: c.border }]}>
-        <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.borderMd }]}>
+        <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5 }]}>
           <TextInput
             style={[s.inputInner, { color: c.text }]}
             placeholder="Ajouter un domaine..."
@@ -383,4 +440,9 @@ const s = StyleSheet.create({
   date: { fontSize: 12, marginTop: 2 },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, paddingVertical: 8 },
+  settingsPanel: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4, borderBottomWidth: 1 },
+  settingsPanelTitle: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
+  settingsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 12 },
+  settingsRowTitle: { fontSize: 14, fontWeight: '500' },
+  settingsRowDesc: { fontSize: 11, marginTop: 2 },
 });

@@ -39,7 +39,7 @@ export default function DeveloperScreen() {
     }
   };
 
-  const inputStyle = [s.input, { backgroundColor: c.surface2, borderColor: c.borderMd, color: c.text }];
+  const inputStyle = [s.input, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5, color: c.text }];
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={s.container}>

@@ -26,21 +26,25 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/branding.png",
+          "image": "./assets/doomname-logo-light-512.png",
           "imageWidth": 180,
           "resizeMode": "contain",
           "backgroundColor": "#0f0f0e",
           "android": {
-            "image": "./assets/branding.png",
+            "image": "./assets/doomname-logo-light-512.png",
             "imageWidth": 180,
             "backgroundColor": "#0f0f0e"
           },
           "ios": {
-            "image": "./assets/branding.png",
+            "image": "./assets/doomname-logo-light-512.png",
             "imageWidth": 180,
             "backgroundColor": "#0f0f0e"
           }
         }
+      ],
+      [
+        "./plugins/withSplashBranding.js",
+        { "brandingImage": "./assets/branding.png" }
       ]
     ],
     "extra": {

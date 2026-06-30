@@ -105,7 +105,7 @@ export default function CheckScreen() {
 
       {/* Barre de recherche */}
       <View style={s.searchRow}>
-        <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.borderMd }]}>
+        <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5 }]}>
           <TextInput
             ref={inputRef}
             style={[s.inputInner, { color: c.text }]}
@@ -204,7 +204,7 @@ export default function CheckScreen() {
             <Text style={[s.modalSub, { color: c.textMuted }]}>
               Pour être alerté quand <Text style={{ color: c.text, fontWeight: '600' }}>{domain.trim().toLowerCase()}</Text> se libère
             </Text>
-            <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.22)', borderWidth: 1.5, marginBottom: 12 }]}>
+            <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5, marginBottom: 12 }]}>
               <Ionicons name="mail-outline" size={18} color={c.textDim} style={{ marginLeft: 12, marginRight: 4 }} />
               <TextInput
                 style={[s.inputInner, { color: c.text }]}
