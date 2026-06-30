@@ -24,6 +24,10 @@ export default function ManageScreen() {
   const [error, setError] = useState('');
   const [newDomain, setNewDomain] = useState('');
   const [adding, setAdding] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
     AsyncStorage.getItem('doomname_email').then(saved => {
@@ -178,6 +182,13 @@ export default function ManageScreen() {
     setToken('');
   };
 
+  const filteredSubs = search.trim()
+    ? subs.filter(s => s.domain.toLowerCase().includes(search.trim().toLowerCase()))
+    : subs;
+  const totalPages = Math.max(1, Math.ceil(filteredSubs.length / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, page), totalPages);
+  const pagedSubs = filteredSubs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   const inputStyle = [s.input, { backgroundColor: c.surface2, borderColor: c.borderMd, color: c.text }];
   const btnStyle = [s.button, { backgroundColor: c.accent }];
 
@@ -230,10 +241,30 @@ export default function ManageScreen() {
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={[s.header, { borderBottomColor: c.border }]}>
         <Text style={[s.userEmail, { color: c.textMuted }]}>{userEmail}</Text>
-        <TouchableOpacity onPress={logout}>
-          <Text style={{ color: c.accent, fontSize: 13 }}>Déconnexion</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+          <TouchableOpacity onPress={() => { setSearchOpen(!searchOpen); if (searchOpen) { setSearch(''); setPage(1); } }}>
+            <Ionicons name="search-outline" size={18} color={searchOpen ? c.accent : c.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={logout}>
+            <Text style={{ color: c.accent, fontSize: 13 }}>Déconnexion</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {searchOpen && (
+        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+          <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.borderMd }]}>
+            <TextInput
+              style={[s.inputInner, { color: c.text }]}
+              placeholder="Rechercher un domaine…"
+              placeholderTextColor={c.textDim}
+              value={search}
+              onChangeText={t => { setSearch(t); setPage(1); }}
+              autoCapitalize="none" autoCorrect={false}
+            />
+          </View>
+        </View>
+      )}
 
       <View style={[s.addRow, { borderBottomColor: c.border }]}>
         <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.borderMd }]}>
@@ -264,10 +295,32 @@ export default function ManageScreen() {
 
       {loading ? <ActivityIndicator color={c.accent} style={{ marginTop: 32 }} /> : (
         <FlatList
-          data={subs}
+          data={pagedSubs}
           keyExtractor={item => item.id.toString()}
           contentContainerStyle={{ padding: 16, gap: 10 }}
           ListEmptyComponent={<Text style={[s.empty, { color: c.textDim }]}>Aucune alerte pour le moment</Text>}
+          ListHeaderComponent={totalPages > 1 ? (
+            <View style={s.pager}>
+              <TouchableOpacity onPress={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} hitSlop={8}>
+                <Ionicons name="chevron-back" size={18} color={currentPage <= 1 ? c.textDim : c.text} />
+              </TouchableOpacity>
+              <Text style={{ color: c.textDim, fontSize: 12 }}>{currentPage} / {totalPages}</Text>
+              <TouchableOpacity onPress={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} hitSlop={8}>
+                <Ionicons name="chevron-forward" size={18} color={currentPage >= totalPages ? c.textDim : c.text} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          ListFooterComponent={totalPages > 1 ? (
+            <View style={s.pager}>
+              <TouchableOpacity onPress={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} hitSlop={8}>
+                <Ionicons name="chevron-back" size={18} color={currentPage <= 1 ? c.textDim : c.text} />
+              </TouchableOpacity>
+              <Text style={{ color: c.textDim, fontSize: 12 }}>{currentPage} / {totalPages}</Text>
+              <TouchableOpacity onPress={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} hitSlop={8}>
+                <Ionicons name="chevron-forward" size={18} color={currentPage >= totalPages ? c.textDim : c.text} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
           renderItem={({ item }) => (
             <View style={[s.card, { backgroundColor: c.surface, borderColor: c.border }]}>
               <View style={{ flex: 1 }}>
@@ -329,4 +382,5 @@ const s = StyleSheet.create({
   domain: { fontSize: 15, fontWeight: '600' },
   date: { fontSize: 12, marginTop: 2 },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
+  pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, paddingVertical: 8 },
 });
