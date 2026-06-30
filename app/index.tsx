@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColors, Radius } from '../constants/theme';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
+const COMMON_TLDS = ['com', 'io', 'studio', 'net', 'fr', 'org', 'co', 'app'];
 
 export default function CheckScreen() {
   const dark = useColorScheme() === 'dark';
@@ -29,8 +30,8 @@ export default function CheckScreen() {
     AsyncStorage.getItem('doomname_email').then(e => { if (e) setSavedEmail(e); });
   }, []);
 
-  const checkDomain = async () => {
-    const d = domain.trim().toLowerCase();
+  const checkDomain = async (domainOverride?: string) => {
+    const d = (domainOverride ?? domain).trim().toLowerCase();
     if (!d) return;
     inputRef.current?.blur();
     setLoading(true);
@@ -93,6 +94,16 @@ export default function CheckScreen() {
     inputRef.current?.focus();
   };
 
+  const useSuggestion = (d: string) => {
+    setDomain(d);
+    checkDomain(d);
+  };
+
+  const domainMatch = domain.trim().toLowerCase().match(/^([a-z0-9-]+)\.([a-z]{2,})$/);
+  const suggestions = domainMatch
+    ? COMMON_TLDS.filter(t => t !== domainMatch[2]).slice(0, 4).map(t => `${domainMatch[1]}.${t}`)
+    : [];
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.bg }}
@@ -116,7 +127,7 @@ export default function CheckScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
-            onSubmitEditing={checkDomain}
+            onSubmitEditing={() => checkDomain()}
             keyboardType="url"
           />
           {domain.length > 0 && (
@@ -127,7 +138,7 @@ export default function CheckScreen() {
         </View>
         <TouchableOpacity
           style={[s.actionBtn, { backgroundColor: c.accent }]}
-          onPress={checkDomain}
+          onPress={() => checkDomain()}
           disabled={loading}
         >
           {loading
@@ -136,6 +147,23 @@ export default function CheckScreen() {
           }
         </TouchableOpacity>
       </View>
+
+      {suggestions.length > 0 && (
+        <View style={s.suggestionsRow}>
+          {suggestions.map(d => (
+            <TouchableOpacity
+              key={d}
+              style={[s.suggestionChip, { backgroundColor: c.surface2, borderColor: c.borderMd }]}
+              onPress={() => useSuggestion(d)}
+            >
+              <Text style={[s.suggestionChipText, { color: c.textMuted }]}>{d}</Text>
+              <View style={[s.suggestionPlus, { backgroundColor: c.accent }]}>
+                <Text style={s.suggestionPlusText}>+</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {error ? (
         <View style={[s.feedbackBox, { backgroundColor: c.dangerDim, borderColor: c.dangerBorder }]}>
@@ -204,7 +232,7 @@ export default function CheckScreen() {
             <Text style={[s.modalSub, { color: c.textMuted }]}>
               Pour être alerté quand <Text style={{ color: c.text, fontWeight: '600' }}>{domain.trim().toLowerCase()}</Text> se libère
             </Text>
-            <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5, marginBottom: 12 }]}>
+            <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5, marginBottom: 12, height: 48 }]}>
               <Ionicons name="mail-outline" size={18} color={c.textDim} style={{ marginLeft: 12, marginRight: 4 }} />
               <TextInput
                 style={[s.inputInner, { color: c.text }]}
@@ -239,6 +267,15 @@ const s = StyleSheet.create({
   container: { padding: 20, paddingTop: 28 },
   subtitle: { fontSize: 14, marginBottom: 20, lineHeight: 20 },
   searchRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  suggestionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: -8, marginBottom: 16 },
+  suggestionChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderWidth: 1, borderRadius: 20,
+    paddingVertical: 6, paddingLeft: 12, paddingRight: 6,
+  },
+  suggestionChipText: { fontSize: 13 },
+  suggestionPlus: { width: 16, height: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  suggestionPlusText: { color: '#fff', fontSize: 12, fontWeight: '700', lineHeight: 14 },
   inputWrap: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
     height: 48, borderRadius: Radius.md, borderWidth: 1,

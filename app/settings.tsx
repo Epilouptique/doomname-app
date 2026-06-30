@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, useColorScheme, ActivityIndicator, ScrollView, Alert
+  StyleSheet, useColorScheme, ActivityIndicator, ScrollView, Alert, Switch
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, Radius } from '../constants/theme';
 
@@ -14,10 +15,39 @@ export default function SettingsScreen() {
   const c = useColors(dark);
   const router = useRouter();
 
+  const [userEmail, setUserEmail] = useState('');
+  const [emailAlertsEnabled, setEmailAlertsEnabled] = useState(true);
+  const [graceAlertsEnabled, setGraceAlertsEnabled] = useState(true);
+
   const [deleteEmail, setDeleteEmail] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteMsg, setDeleteMsg] = useState('');
   const [deleteErr, setDeleteErr] = useState('');
+
+  useEffect(() => {
+    AsyncStorage.getItem('doomname_email').then(saved => {
+      if (saved) {
+        setUserEmail(saved);
+        fetch(`${API_BASE}/api/manage/settings?email=${encodeURIComponent(saved)}`)
+          .then(res => res.json())
+          .then(data => {
+            setEmailAlertsEnabled(data.email_alerts_enabled !== false);
+            setGraceAlertsEnabled(data.grace_alerts_enabled !== false);
+          })
+          .catch(() => {});
+      }
+    });
+  }, []);
+
+  const updateSettings = async (next: { email_alerts_enabled?: boolean; grace_alerts_enabled?: boolean }) => {
+    try {
+      await fetch(`${API_BASE}/api/manage/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail, ...next })
+      });
+    } catch { /* la prochaine ouverture rechargera l'état réel */ }
+  };
 
   const requestDeletion = () => {
     const e = deleteEmail.trim().toLowerCase();
@@ -61,6 +91,38 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={s.container}>
       <Text style={[s.subtitle, { color: c.textMuted }]}>Documentation, conditions d'utilisation et gestion du compte</Text>
+
+      <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
+        <Text style={[s.sectionTitle, { color: c.accent }]}>Alertes</Text>
+        {userEmail ? (
+          <>
+            <View style={s.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.rowLabel, { color: c.text }]}>Alertes e-mail</Text>
+                <Text style={[s.rowDesc, { color: c.textDim }]}>Domaine surveillé devenu disponible</Text>
+              </View>
+              <Switch
+                value={emailAlertsEnabled}
+                onValueChange={v => { setEmailAlertsEnabled(v); updateSettings({ email_alerts_enabled: v }); }}
+                trackColor={{ true: c.accent }}
+              />
+            </View>
+            <View style={[s.row, { borderTopColor: c.border, borderTopWidth: 1 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.rowLabel, { color: c.text }]}>Période de grâce</Text>
+                <Text style={[s.rowDesc, { color: c.textDim }]}>Grâce, rédemption ou suppression</Text>
+              </View>
+              <Switch
+                value={graceAlertsEnabled}
+                onValueChange={v => { setGraceAlertsEnabled(v); updateSettings({ grace_alerts_enabled: v }); }}
+                trackColor={{ true: c.accent }}
+              />
+            </View>
+          </>
+        ) : (
+          <Text style={[s.info, { color: c.textMuted }]}>Connectez-vous depuis "Mes alertes" pour gérer vos préférences.</Text>
+        )}
+      </View>
 
       <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
         <Text style={[s.sectionTitle, { color: c.accent }]}>Général</Text>
@@ -128,6 +190,7 @@ const s = StyleSheet.create({
   },
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowLabel: { fontSize: 14, fontWeight: '500' },
+  rowDesc: { fontSize: 11, marginTop: 2 },
   input: {
     height: 48, borderRadius: Radius.md, paddingHorizontal: 14, marginBottom: 10,
     fontSize: 15,

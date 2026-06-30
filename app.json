@@ -34,11 +34,6 @@
             "image": "./assets/doomname-logo-light-512.png",
             "imageWidth": 180,
             "backgroundColor": "#0f0f0e"
-          },
-          "ios": {
-            "image": "./assets/doomname-logo-light-512.png",
-            "imageWidth": 180,
-            "backgroundColor": "#0f0f0e"
           }
         }
       ],
