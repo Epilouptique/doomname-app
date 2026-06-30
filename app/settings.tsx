@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, useColorScheme, ActivityIndicator, ScrollView, Alert, Switch
+  StyleSheet, useColorScheme, ActivityIndicator, ScrollView, Alert, Switch, Linking
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -90,7 +90,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={s.container}>
-      <Text style={[s.subtitle, { color: c.textMuted }]}>Documentation, conditions d'utilisation et gestion du compte</Text>
+     
 
       <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
         <Text style={[s.sectionTitle, { color: c.accent }]}>Alertes</Text>
@@ -173,6 +173,13 @@ export default function SettingsScreen() {
           </View>
         ) : null}
       </View>
+
+      <Text style={[s.footer, { color: c.textMuted }]}>
+        Application réalisée par{' '}
+        <Text style={{ color: c.accent }} onPress={() => Linking.openURL('https://dahu-concept.fr')}>
+          Dahu-Concept
+        </Text>
+      </Text>
     </ScrollView>
   );
 }
@@ -207,4 +214,5 @@ const s = StyleSheet.create({
   feedbackBox: { borderRadius: Radius.md, borderWidth: 1, padding: 12, marginTop: 10 },
   feedbackText: { fontSize: 13 },
   info: { fontSize: 13, lineHeight: 19 },
+  footer: { textAlign: 'center', fontSize: 12, marginTop: 8 },
 });
