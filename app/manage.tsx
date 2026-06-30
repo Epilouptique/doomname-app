@@ -281,8 +281,8 @@ export default function ManageScreen() {
                 onValueChange={() => toggleSub(item.id, item.active)}
                 trackColor={{ true: c.accent }}
               />
-              <TouchableOpacity onPress={() => deleteSub(item.id, item.domain)} style={{ marginLeft: 12 }}>
-                <Text style={{ color: c.danger, fontSize: 18 }}>🗑</Text>
+              <TouchableOpacity onPress={() => deleteSub(item.id, item.domain)} style={{ marginLeft: 12, padding: 4 }}>
+                <Ionicons name="trash-outline" size={16} color={c.danger} />
               </TouchableOpacity>
             </View>
           )}
