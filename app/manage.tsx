@@ -273,7 +273,7 @@ export default function ManageScreen() {
 
     {searchOpen && (
   <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-    <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5, height: 48 }]}>
+    <View style={[s.inputWrap, { flex: 0, width: '100%', backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5, height: 48 }]}>
       <TextInput
         style={[s.inputInner, { color: c.text }]}
         placeholder="Rechercher un domaine…"

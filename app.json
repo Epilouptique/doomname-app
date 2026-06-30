@@ -29,7 +29,7 @@
           "image": "./assets/doomname-logo-light-512.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#0f0f0e"
+          "backgroundColor": "#f0ede8"
         }
       ]
     ],

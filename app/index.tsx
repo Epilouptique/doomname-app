@@ -232,23 +232,23 @@ export default function CheckScreen() {
             <Text style={[s.modalSub, { color: c.textMuted }]}>
               Pour être alerté quand <Text style={{ color: c.text, fontWeight: '600' }}>{domain.trim().toLowerCase()}</Text> se libère
             </Text>
-            <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5, marginBottom: 12, height: 48 }]}>
-              <Ionicons name="mail-outline" size={18} color={c.textDim} style={{ marginLeft: 12, marginRight: 4 }} />
-              <TextInput
-                style={[s.inputInner, { color: c.text }]}
-                placeholder="votre@email.com"
-                placeholderTextColor={c.textDim}
-                value={emailInput}
-                onChangeText={setEmailInput}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-              {emailInput.length > 0 && (
-                <TouchableOpacity onPress={() => setEmailInput('')} style={s.clearBtn} hitSlop={8}>
-                  <Ionicons name="close" size={18} color={c.textDim} />
-                </TouchableOpacity>
-              )}
-            </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', height: 48, width: '100%', backgroundColor: c.surface2, borderColor: c.inputBorder, borderWidth: 1.5, borderRadius: Radius.md, paddingHorizontal: 12, marginBottom: 12 }}>
+  <Ionicons name="mail-outline" size={18} color={c.textDim} style={{ marginRight: 8 }} />
+  <TextInput
+    style={{ flex: 1, height: '100%', fontSize: 15, color: c.text }}
+    placeholder="votre@email.com"
+    placeholderTextColor={c.textDim}
+    value={emailInput}
+    onChangeText={setEmailInput}
+    autoCapitalize="none"
+    keyboardType="email-address"
+  />
+  {emailInput.length > 0 && (
+    <TouchableOpacity onPress={() => setEmailInput('')} hitSlop={8}>
+      <Ionicons name="close" size={18} color={c.textDim} />
+    </TouchableOpacity>
+  )}
+</View>
             <TouchableOpacity style={[s.actionBtn, { backgroundColor: c.accent, width: '100%', height: 48, borderRadius: Radius.md }]} onPress={confirmEmail}>
               <Text style={{ color: '#fff', fontWeight: '500', fontSize: 14 }}>Activer l'alerte</Text>
             </TouchableOpacity>
