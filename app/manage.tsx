@@ -352,7 +352,9 @@ export default function ManageScreen() {
               <Switch
                 value={item.active}
                 onValueChange={() => toggleSub(item.id, item.active)}
-                trackColor={{ true: c.accent }}
+                trackColor={{ false: c.borderMd, true: c.accent }}
+                thumbColor="#fff"
+                ios_backgroundColor={c.borderMd}
               />
               <TouchableOpacity onPress={() => deleteSub(item.id, item.domain)} style={{ marginLeft: 12, padding: 4 }}>
                 <Ionicons name="trash-outline" size={16} color={c.danger} />

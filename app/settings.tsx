@@ -104,7 +104,9 @@ export default function SettingsScreen() {
               <Switch
                 value={emailAlertsEnabled}
                 onValueChange={v => { setEmailAlertsEnabled(v); updateSettings({ email_alerts_enabled: v }); }}
-                trackColor={{ true: c.accent }}
+                trackColor={{ false: c.borderMd, true: c.accent }}
+                thumbColor="#fff"
+                ios_backgroundColor={c.borderMd}
               />
             </View>
             <View style={[s.row, { borderTopColor: c.border, borderTopWidth: 1 }]}>
@@ -115,7 +117,9 @@ export default function SettingsScreen() {
               <Switch
                 value={graceAlertsEnabled}
                 onValueChange={v => { setGraceAlertsEnabled(v); updateSettings({ grace_alerts_enabled: v }); }}
-                trackColor={{ true: c.accent }}
+                trackColor={{ false: c.borderMd, true: c.accent }}
+                thumbColor="#fff"
+                ios_backgroundColor={c.borderMd}
               />
             </View>
           </>
