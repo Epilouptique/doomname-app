@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Linking from 'expo-linking';
+import { useLocalSearchParams } from 'expo-router';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, useColorScheme, ActivityIndicator,
@@ -29,7 +30,17 @@ export default function ManageScreen() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
-  const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'available'>('all');
+  const [highlightIds, setHighlightIds] = useState<Set<number>>(new Set());
+
+  // Filtre transmis par le tap sur une notification push (ex. ?filter=available).
+  const params = useLocalSearchParams<{ filter?: string }>();
+  useEffect(() => {
+    if (params.filter === 'available' || params.filter === 'active' || params.filter === 'inactive' || params.filter === 'all') {
+      setFilter(params.filter);
+      setPage(1);
+    }
+  }, [params.filter]);
 
   useEffect(() => {
     AsyncStorage.getItem('doomname_email').then(saved => {
@@ -117,6 +128,19 @@ export default function ManageScreen() {
       const res = await fetch(`${API_BASE}/api/manage/subscriptions?email=${encodeURIComponent(mail)}`);
       const data = await res.json();
       setSubs(data);
+      // Met en évidence les domaines devenus disponibles il y a moins de 10 min,
+      // puis retire la surbrillance après quelques secondes.
+      const RECENT_MS = 10 * 60 * 1000;
+      const recent = new Set<number>(
+        (Array.isArray(data) ? data : [])
+          .filter((s: any) => s.last_status === 'available' && s.notified_at &&
+            Date.now() - new Date(s.notified_at).getTime() < RECENT_MS)
+          .map((s: any) => s.id)
+      );
+      if (recent.size) {
+        setHighlightIds(recent);
+        setTimeout(() => setHighlightIds(new Set()), 5000);
+      }
     } catch {
       setError('Impossible de charger les abonnements.');
     } finally {
@@ -189,7 +213,11 @@ export default function ManageScreen() {
     setToken('');
   };
 
-  let filteredSubs = filter === 'active' ? subs.filter(s => s.active) : filter === 'inactive' ? subs.filter(s => !s.active) : subs;
+  let filteredSubs =
+    filter === 'active'    ? subs.filter(s => s.active)
+    : filter === 'inactive'  ? subs.filter(s => !s.active)
+    : filter === 'available' ? subs.filter(s => s.last_status === 'available')
+    : subs;
   if (search.trim()) filteredSubs = filteredSubs.filter(s => s.domain.toLowerCase().includes(search.trim().toLowerCase()));
   const totalPages = Math.max(1, Math.ceil(filteredSubs.length / PAGE_SIZE));
   const currentPage = Math.min(Math.max(1, page), totalPages);
@@ -258,7 +286,7 @@ export default function ManageScreen() {
       </View>
 
       <View style={s.filterRow}>
-        {(['all', 'active', 'inactive'] as const).map(f => (
+        {(['all', 'active', 'inactive', 'available'] as const).map(f => (
           <TouchableOpacity
             key={f}
             onPress={() => { setFilter(f); setPage(1); }}
@@ -268,7 +296,7 @@ export default function ManageScreen() {
             ]}
           >
             <Text style={[s.filterBtnText, { color: filter === f ? c.accent : c.textMuted }]}>
-              {f === 'all' ? 'Tous' : f === 'active' ? 'Actifs' : 'Désactivés'}
+              {f === 'all' ? 'Tous' : f === 'active' ? 'Actifs' : f === 'inactive' ? 'Désactivés' : 'Disponible'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -344,10 +372,23 @@ export default function ManageScreen() {
               </TouchableOpacity>
             </View>
           ) : null}
-          renderItem={({ item }) => (
-            <View style={[s.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+          renderItem={({ item }) => {
+            const isAvailable = item.last_status === 'available';
+            const highlight = highlightIds.has(item.id);
+            return (
+            <View style={[
+              s.card,
+              { backgroundColor: highlight ? c.successDim : c.surface, borderColor: highlight ? c.successBorder : c.border }
+            ]}>
               <View style={{ flex: 1 }}>
-                <Text style={[s.domain, { color: c.text }]}>{item.domain}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Text style={[s.domain, { color: c.text }]}>{item.domain}</Text>
+                  {isAvailable && (
+                    <View style={[s.availBadge, { backgroundColor: c.successDim, borderColor: c.successBorder }]}>
+                      <Text style={[s.availBadgeText, { color: c.success }]}>Disponible</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={[s.date, { color: c.textDim }]}>
                   {new Date(item.created_at).toLocaleDateString('fr-FR')}
                 </Text>
@@ -363,7 +404,8 @@ export default function ManageScreen() {
                 <Ionicons name="trash-outline" size={16} color={c.danger} />
               </TouchableOpacity>
             </View>
-          )}
+            );
+          }}
         />
       )}
     </View>
@@ -408,7 +450,9 @@ const s = StyleSheet.create({
   date: { fontSize: 12, marginTop: 2 },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, paddingVertical: 8 },
-  filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   filterBtn: { borderWidth: 1, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14 },
   filterBtnText: { fontSize: 12, fontWeight: '500' },
+  availBadge: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 1 },
+  availBadgeText: { fontSize: 10, fontWeight: '600' },
 });

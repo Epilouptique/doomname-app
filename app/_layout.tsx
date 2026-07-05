@@ -52,14 +52,19 @@ export default function RootLayout() {
     // à l'email si l'utilisateur est déjà connecté.
     registerForPushNotificationsAsync().then(() => syncPushToken());
 
-    // Ouvre "Mes alertes" quand on tape sur une notification.
-    const goToAlerts = () => router.push('/manage');
+    // Ouvre "Mes alertes" quand on tape sur une notification, en appliquant le
+    // filtre transmis dans le payload (ex. filter: 'available').
+    const goToAlerts = (response?: Notifications.NotificationResponse) => {
+      const data = response?.notification?.request?.content?.data as { filter?: string } | undefined;
+      const filter = data?.filter;
+      router.push(filter ? `/manage?filter=${filter}` : '/manage');
+    };
 
     const sub = Notifications.addNotificationResponseReceivedListener(goToAlerts);
 
     // Cas "démarrage à froid" : l'app a été ouverte en tapant une notif.
     Notifications.getLastNotificationResponseAsync().then(response => {
-      if (response) goToAlerts();
+      if (response) goToAlerts(response);
     });
 
     return () => sub.remove();
