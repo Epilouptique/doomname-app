@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import * as Linking from 'expo-linking';
-import { useLocalSearchParams } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, useColorScheme, ActivityIndicator,
@@ -31,7 +32,7 @@ export default function ManageScreen() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'available'>('all');
-  const [highlightIds, setHighlightIds] = useState<Set<number>>(new Set());
+  const [highlight, setHighlight] = useState<Record<number, 'green' | 'red'>>({});
 
   // Filtre transmis par le tap sur une notification push (ex. ?filter=available).
   const params = useLocalSearchParams<{ filter?: string }>();
@@ -50,6 +51,22 @@ export default function ManageScreen() {
         loadSubs(saved);
       }
     });
+  }, []);
+
+  // Rafraîchit la liste quand l'écran reprend le focus (ex. après un tap sur une
+  // notification qui amène ici) — évite d'avoir à ajouter un domaine pour rafraîchir.
+  useFocusEffect(
+    useCallback(() => {
+      if (userEmail) loadSubs(userEmail);
+    }, [userEmail])
+  );
+
+  // Rafraîchit aussi si une notification arrive pendant que l'app est ouverte.
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener(() => {
+      AsyncStorage.getItem('doomname_email').then(mail => { if (mail) loadSubs(mail); });
+    });
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {
@@ -128,24 +145,47 @@ export default function ManageScreen() {
       const res = await fetch(`${API_BASE}/api/manage/subscriptions?email=${encodeURIComponent(mail)}`);
       const data = await res.json();
       setSubs(data);
-      // Met en évidence les domaines devenus disponibles il y a moins de 10 min,
-      // puis retire la surbrillance après quelques secondes.
-      const RECENT_MS = 10 * 60 * 1000;
-      const recent = new Set<number>(
-        (Array.isArray(data) ? data : [])
-          .filter((s: any) => s.last_status === 'available' && s.notified_at &&
-            Date.now() - new Date(s.notified_at).getTime() < RECENT_MS)
-          .map((s: any) => s.id)
-      );
-      if (recent.size) {
-        setHighlightIds(recent);
-        setTimeout(() => setHighlightIds(new Set()), 5000);
-      }
+      await computeHighlights(Array.isArray(data) ? data : []);
     } catch {
       setError('Impossible de charger les abonnements.');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Met en évidence les domaines dont le statut a changé il y a moins de 10 min :
+  // vert = devenu disponible, rouge = repris (taken). Chaque changement n'est mis
+  // en évidence qu'UNE fois par appareil (mémorisé dans AsyncStorage via une clé
+  // id:notified_at), puis la surbrillance s'efface après quelques secondes.
+  const computeHighlights = async (data: any[]) => {
+    const RECENT_MS = 10 * 60 * 1000;
+    const now = Date.now();
+    const candidates = data.filter((s: any) =>
+      s.notified_at &&
+      (now - new Date(s.notified_at).getTime() < RECENT_MS) &&
+      (s.last_status === 'available' || s.last_status === 'taken')
+    );
+    if (candidates.length === 0) return;
+
+    let flashed: string[] = [];
+    try { flashed = JSON.parse((await AsyncStorage.getItem('doomname_flashed')) || '[]'); } catch { flashed = []; }
+    const flashedSet = new Set(flashed);
+
+    const map: Record<number, 'green' | 'red'> = {};
+    const newKeys: string[] = [];
+    for (const s of candidates) {
+      const key = `${s.id}:${new Date(s.notified_at).getTime()}`;
+      if (!flashedSet.has(key)) {
+        map[s.id] = s.last_status === 'available' ? 'green' : 'red';
+        newKeys.push(key);
+      }
+    }
+    if (newKeys.length === 0) return;
+
+    setHighlight(map);
+    // Conserve les 200 dernières clés pour éviter une croissance illimitée.
+    await AsyncStorage.setItem('doomname_flashed', JSON.stringify([...flashed, ...newKeys].slice(-200)));
+    setTimeout(() => setHighlight({}), 5000);
   };
 
   const toggleSub = async (id: number, currentActive: boolean) => {
@@ -374,12 +414,11 @@ export default function ManageScreen() {
           ) : null}
           renderItem={({ item }) => {
             const isAvailable = item.last_status === 'available';
-            const highlight = highlightIds.has(item.id);
+            const hl = highlight[item.id];
+            const bg = hl === 'green' ? c.successDim : hl === 'red' ? c.dangerDim : c.surface;
+            const bd = hl === 'green' ? c.successBorder : hl === 'red' ? c.dangerBorder : c.border;
             return (
-            <View style={[
-              s.card,
-              { backgroundColor: highlight ? c.successDim : c.surface, borderColor: highlight ? c.successBorder : c.border }
-            ]}>
+            <View style={[s.card, { backgroundColor: bg, borderColor: bd }]}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <Text style={[s.domain, { color: c.text }]}>{item.domain}</Text>

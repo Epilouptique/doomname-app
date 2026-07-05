@@ -186,9 +186,20 @@ export default function CheckScreen() {
           ]}>
             <View style={[s.dot, { backgroundColor: result.available ? c.success : c.danger }]} />
             <Text style={[s.badgeText, { color: result.available ? c.success : c.danger }]}>
-              {result.available ? 'Disponible — aucune alerte nécessaire' : 'Enregistré'}
+              {result.available ? 'Disponible' : 'Enregistré'}
             </Text>
           </View>
+
+          {/* Domaine disponible : proposer de le surveiller quand même. */}
+          {result.available && !subscribeMsg.startsWith('✅') && !subscribing && (
+            <TouchableOpacity
+              style={[s.watchBtn, { borderColor: c.accent }]}
+              onPress={() => { savedEmail ? subscribe(domain.trim().toLowerCase(), savedEmail) : setShowEmailModal(true); }}
+            >
+              <Ionicons name="notifications-outline" size={16} color={c.accent} style={{ marginRight: 6 }} />
+              <Text style={[s.watchBtnText, { color: c.accent }]}>Surveiller ce domaine</Text>
+            </TouchableOpacity>
+          )}
 
           {result.expiration_date && (
             <View style={s.infoRow}>
@@ -300,6 +311,12 @@ const s = StyleSheet.create({
   },
   dot: { width: 7, height: 7, borderRadius: 4 },
   badgeText: { fontWeight: '600', fontSize: 14 },
+  watchBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    alignSelf: 'flex-start', borderWidth: 1.5, borderRadius: Radius.md,
+    paddingVertical: 9, paddingHorizontal: 14,
+  },
+  watchBtnText: { fontWeight: '600', fontSize: 14 },
   infoRow: { flexDirection: 'row', alignItems: 'center' },
   info: { fontSize: 13 },
   modalOverlay: {
