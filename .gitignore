@@ -46,3 +46,8 @@ GoogleService-Info.plist
 
 # firebase service account key
 domainwatch-7da80-firebase-adminsdk-fbsvc-f3cfa5e8fe.json  
+
+# Fichiers Claude / instructions agent (gardés en local, non publiés)
+.claude/
+CLAUDE.md
+AGENTS.md
