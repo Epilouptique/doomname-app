@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, useColorScheme, ActivityIndicator, ScrollView, Alert, Switch, Linking
+  StyleSheet, ActivityIndicator, ScrollView, Alert, Switch, Linking
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';

@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Image,
   StyleSheet, ActivityIndicator,
-  ScrollView, Modal, FlatList, useWindowDimensions, Keyboard,
-  LayoutAnimation, Platform, UIManager,
+  ScrollView, Modal, FlatList, Keyboard, RefreshControl,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withTiming, runOnJS, FadeIn, FadeOut,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -16,14 +17,7 @@ import { useColors, Radius } from '../constants/theme';
 import { useTheme } from '../lib/theme';
 import { syncPushToken, unregisterPushToken } from '../lib/notifications';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-// Transition douce (~180ms) pour l'apparition/disparition des blocs filtre/recherche.
-const animate = () =>
-  LayoutAnimation.configureNext(
-    LayoutAnimation.create(180, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity)
-  );
+const FILTER_ANIM = { entering: FadeIn.duration(160), exiting: FadeOut.duration(140) };
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 const COMMON_TLDS = ['com', 'io', 'studio', 'net', 'fr', 'org', 'co', 'app'];
@@ -31,13 +25,6 @@ const PAGE_SIZE = 20;
 
 const logoDark = require('../assets/doomname-logo-dark.png');
 const logoLight = require('../assets/doomname-logo-light.png');
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  if (arr.length === 0) return [[]];
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-}
 
 // Ligne d'alerte avec swipe progressif (Reanimated) :
 //  • glissé vers la GAUCHE → activer/désactiver ; vers la DROITE → supprimer.
@@ -122,7 +109,6 @@ export default function HomeScreen() {
   const c = useColors(dark);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   const inputRef = useRef<TextInput>(null);
 
   // Compte
@@ -148,7 +134,8 @@ export default function HomeScreen() {
   const [listSearch, setListSearch] = useState('');
   const [highlight, setHighlight] = useState<Record<number, 'green' | 'red'>>({});
   const pendingFlashRef = useRef<{ domain: string; color: 'green' | 'red' } | null>(null);
-  const pagerRef = useRef<FlatList>(null);
+  const listRef = useRef<FlatList>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE); // scroll infini vertical
 
   // Modale email (abonnement sans compte) et modale connexion
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -201,10 +188,11 @@ export default function HomeScreen() {
   // Rafraîchit au focus de l'écran.
   useFocusEffect(useCallback(() => { if (userEmail) loadSubs(userEmail); }, [userEmail]));
 
-  // Changement de filtre / recherche : on revient à la première page sans
-  // remonter la liste (réactivité immédiate).
+  // Changement de filtre / recherche : réinitialise la fenêtre de scroll infini
+  // et remonte en haut. Purement en mémoire (aucun appel réseau) → instantané.
   useEffect(() => {
-    pagerRef.current?.scrollToOffset({ offset: 0, animated: false });
+    setVisibleCount(PAGE_SIZE);
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [filter, listSearch]);
 
   // Rafraîchit + flash ciblé si une notification arrive au premier plan.
@@ -315,11 +303,7 @@ export default function HomeScreen() {
   // Ajout direct (connecté) : abonne silencieusement et affiche une coche verte
   // ~1s (sur le "+" ou l'extension cliquée), sans quitter le mode recherche ni
   // masquer les suggestions. source = 'main' (bouton +) ou le domaine (chip).
-  const addDirect = async (d: string, source: 'main' | string) => {
-    const dom = d.trim().toLowerCase();
-    if (!dom) { inputRef.current?.focus(); return; }
-    const ok = await subscribe(dom, userEmail, true);
-    if (!ok) return;
+  const flashAdded = (source: 'main' | string, dom: string) => {
     if (source === 'main') {
       setAddedMain(true);
       setTimeout(() => setAddedMain(false), 1000);
@@ -327,6 +311,15 @@ export default function HomeScreen() {
       setAddedChip(dom);
       setTimeout(() => setAddedChip(prev => (prev === dom ? null : prev)), 1000);
     }
+  };
+
+  const addDirect = async (d: string, source: 'main' | string) => {
+    const dom = d.trim().toLowerCase();
+    if (!dom) { inputRef.current?.focus(); return; }
+    // Déjà suivi → pas de doublon : simple confirmation visuelle, aucun appel.
+    if (subbedSet.has(dom)) { flashAdded(source, dom); return; }
+    const ok = await subscribe(dom, userEmail, true);
+    if (ok) flashAdded(source, dom);
   };
 
   // ─── Connexion (magic link) ────────────────────────────────────────────────
@@ -395,13 +388,13 @@ export default function HomeScreen() {
     } catch { if (userEmail) loadSubs(userEmail); }
   }, [userEmail]);
 
-  // Ouvre l'un des blocs (recherche liste / filtre) en fermant l'autre, animé.
+  // Ouvre l'un des blocs (recherche liste / filtre) en fermant l'autre.
+  // L'animation d'entrée/sortie est portée par Reanimated (FILTER_ANIM).
+  // Fermer la recherche vide son contenu (la liste complète réapparaît).
   const toggleListSearch = useCallback(() => {
-    animate();
     setListSearchOpen(o => { if (!o) setFilterOpen(false); else setListSearch(''); return !o; });
   }, []);
   const toggleFilter = useCallback(() => {
-    animate();
     setFilterOpen(o => { if (!o) setListSearchOpen(false); return !o; });
   }, []);
 
@@ -419,7 +412,20 @@ export default function HomeScreen() {
     if (q) list = list.filter(s => s.domain.toLowerCase().includes(q));
     return list;
   }, [subs, filter, listSearch]);
-  const pages = useMemo(() => chunk(filteredSubs, PAGE_SIZE), [filteredSubs]);
+
+  // Fenêtre affichée (scroll infini vertical) — pas de pagination horizontale.
+  const visibleSubs = useMemo(() => filteredSubs.slice(0, visibleCount), [filteredSubs, visibleCount]);
+  const canLoadMore = visibleCount < filteredSubs.length;
+  const loadMore = useCallback(() => {
+    setVisibleCount(v => (v < filteredSubs.length ? Math.min(v + PAGE_SIZE, filteredSubs.length) : v));
+  }, [filteredSubs.length]);
+
+  // Domaines déjà suivis (pour désactiver les doublons dans les suggestions / "+").
+  const subbedSet = useMemo(() => new Set(subs.map(s => String(s.domain).toLowerCase())), [subs]);
+
+  const renderItem = useCallback(({ item }: { item: any }) => (
+    <AlertRow item={item} c={c} hl={highlight[item.id]} onDelete={deleteSub} onToggle={toggleSub} />
+  ), [c, highlight, deleteSub, toggleSub]);
 
   const connected = !!userEmail;
 
@@ -483,15 +489,21 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity
-          style={[s.actionBtn, { backgroundColor: addedMain ? c.success : c.accent }]}
-          onPress={() => connected ? addDirect(domain, 'main') : checkDomain()}
-          disabled={checking || subscribing}
-        >
-          {(checking || subscribing)
-            ? <ActivityIndicator color="#fff" size="small" />
-            : <Ionicons name={addedMain ? 'checkmark' : (connected ? 'add' : 'search')} size={connected ? 26 : 20} color="#fff" />}
-        </TouchableOpacity>
+        {(() => {
+          const mainSubbed = connected && !!domain.trim() && subbedSet.has(domain.trim().toLowerCase());
+          const mainDone = addedMain || mainSubbed;
+          return (
+            <TouchableOpacity
+              style={[s.actionBtn, { backgroundColor: mainDone ? c.success : c.accent }]}
+              onPress={() => connected ? addDirect(domain, 'main') : checkDomain()}
+              disabled={checking || subscribing || mainSubbed}
+            >
+              {(checking || subscribing)
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Ionicons name={mainDone ? 'checkmark' : (connected ? 'add' : 'search')} size={connected ? 26 : 20} color="#fff" />}
+            </TouchableOpacity>
+          );
+        })()}
       </View>
 
       {/* Corps : suggestions (focus) OU liste / bouton connexion */}
@@ -507,16 +519,24 @@ export default function HomeScreen() {
           ) : null}
           <View style={s.suggestionsWrap}>
             {suggestions.map(d => {
-              const added = addedChip === d;
+              const subbed = connected && subbedSet.has(d);           // déjà dans les alertes
+              const done = subbed || addedChip === d;                 // coche verte
               return (
                 <TouchableOpacity
                   key={d}
-                  style={[s.suggestionChip, { backgroundColor: added ? c.successDim : c.surface2, borderColor: added ? c.successBorder : c.borderMd }]}
+                  disabled={subbed}
+                  style={[s.suggestionChip, {
+                    backgroundColor: done ? c.successDim : c.surface2,
+                    borderColor: done ? c.successBorder : c.borderMd,
+                    opacity: subbed ? 0.75 : 1,
+                  }]}
                   onPress={() => { connected ? addDirect(d, d) : (setDomain(d), checkDomain(d)); }}
                 >
-                  <Text style={[s.suggestionText, { color: added ? c.success : c.textMuted }]}>{d}</Text>
-                  <View style={[s.suggestionPlus, { backgroundColor: added ? c.success : c.accent }]}>
-                    {added ? <Ionicons name="checkmark" size={12} color="#fff" /> : <Text style={s.suggestionPlusText}>+</Text>}
+                  <Text style={[s.suggestionText, { color: done ? c.success : c.textMuted }]}>
+                    {d}{subbed ? '  · déjà suivi' : ''}
+                  </Text>
+                  <View style={[s.suggestionPlus, { backgroundColor: done ? c.success : c.accent }]}>
+                    {done ? <Ionicons name="checkmark" size={12} color="#fff" /> : <Text style={s.suggestionPlusText}>+</Text>}
                   </View>
                 </TouchableOpacity>
               );
@@ -568,58 +588,61 @@ export default function HomeScreen() {
 
           {connected ? (
             <>
+              {/* Blocs filtre / recherche : même hauteur (s.subBar) → aucun saut. */}
               {filterOpen && (
-                <View style={s.filterRow}>
-                  {filters.map(f => (
-                    <TouchableOpacity
-                      key={f}
-                      onPress={() => setFilter(f)}
-                      style={[s.filterBtn, { borderColor: filter === f ? c.accent : c.borderMd, backgroundColor: filter === f ? c.accentDim : 'transparent' }]}
-                    >
-                      <Text style={[s.filterBtnText, { color: filter === f ? c.accent : c.textMuted }]}>{filterLabel(f)}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <Animated.View {...FILTER_ANIM} style={s.subBar}>
+                  <View style={s.filterRow}>
+                    {filters.map(f => (
+                      <TouchableOpacity
+                        key={f}
+                        onPress={() => setFilter(f)}
+                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                        style={[s.filterBtn, { borderColor: filter === f ? c.accent : c.borderMd, backgroundColor: filter === f ? c.accentDim : 'transparent' }]}
+                      >
+                        <Text style={[s.filterBtnText, { color: filter === f ? c.accent : c.textMuted }]}>{filterLabel(f)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </Animated.View>
               )}
               {listSearchOpen && (
-                <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                <Animated.View {...FILTER_ANIM} style={s.subBar}>
                   <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder }]}>
                     <TextInput
                       style={[s.inputInner, { color: c.text }]}
                       placeholder="Rechercher dans mes alertes…"
                       placeholderTextColor={c.textDim}
                       value={listSearch} onChangeText={setListSearch}
-                      autoCapitalize="none" autoCorrect={false}
+                      autoCapitalize="none" autoCorrect={false} autoFocus
                     />
+                    {listSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setListSearch('')} style={{ paddingHorizontal: 10 }} hitSlop={8}>
+                        <Ionicons name="close" size={18} color={c.textDim} />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                </View>
+                </Animated.View>
               )}
 
               {loading && filteredSubs.length === 0 ? (
                 <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} />
-              ) : filteredSubs.length === 0 ? (
-                <Text style={[s.empty, { color: c.textDim }]}>Aucune alerte pour ce filtre.</Text>
               ) : (
                 <FlatList
-                  ref={pagerRef}
-                  data={pages}
-                  keyExtractor={(_, i) => `page-${i}`}
-                  horizontal
-                  pagingEnabled
-                  showsHorizontalScrollIndicator={false}
+                  ref={listRef}
+                  data={visibleSubs}
+                  keyExtractor={item => String(item.id)}
+                  renderItem={renderItem}
+                  contentContainerStyle={{ padding: 16, gap: 10, flexGrow: 1 }}
                   keyboardShouldPersistTaps="handled"
-                  renderItem={({ item: pageItems }) => (
-                    <ScrollView style={{ width }} contentContainerStyle={{ padding: 16, gap: 10 }} keyboardShouldPersistTaps="handled">
-                      {pageItems.map(item => (
-                        <AlertRow key={item.id} item={item} c={c} hl={highlight[item.id]} onDelete={deleteSub} onToggle={toggleSub} />
-                      ))}
-                    </ScrollView>
-                  )}
-                  ListFooterComponent={null}
+                  onEndReached={loadMore}
+                  onEndReachedThreshold={0.5}
+                  removeClippedSubviews
+                  refreshControl={
+                    <RefreshControl refreshing={loading} onRefresh={() => userEmail && loadSubs(userEmail)} tintColor={c.accent} colors={[c.accent]} />
+                  }
+                  ListEmptyComponent={<Text style={[s.empty, { color: c.textDim }]}>Aucune alerte pour ce filtre.</Text>}
+                  ListFooterComponent={canLoadMore ? <ActivityIndicator color={c.accent} style={{ marginVertical: 16 }} /> : null}
                 />
-              )}
-              {pages.length > 1 && (
-                <Text style={[s.pageHint, { color: c.textDim }]}>← glissez pour changer de page ({pages.length}) →</Text>
               )}
             </>
           ) : (
@@ -740,7 +763,9 @@ const s = StyleSheet.create({
   watchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start', borderWidth: 1.5, borderRadius: Radius.md, paddingVertical: 9, paddingHorizontal: 14 },
   watchBtnText: { fontWeight: '600', fontSize: 14 },
 
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  // Hauteur identique pour les blocs filtre et recherche (aucun saut de layout).
+  subBar: { height: 66, justifyContent: 'center', paddingHorizontal: 16 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filterBtn: { borderWidth: 1, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14 },
   filterBtnText: { fontSize: 12, fontWeight: '500' },
 
@@ -756,7 +781,6 @@ const s = StyleSheet.create({
   actionText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
-  pageHint: { textAlign: 'center', fontSize: 11, paddingVertical: 8 },
 
   loginBtn: { height: 48, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   loginBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },

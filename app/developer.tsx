@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, useColorScheme, ActivityIndicator, ScrollView, Linking
+  StyleSheet, ActivityIndicator, ScrollView, Linking
 } from 'react-native';
 import { useColors, Radius } from '../constants/theme';
 import { useTheme } from '../lib/theme';
