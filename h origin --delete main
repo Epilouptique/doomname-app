@@ -1,0 +1,21 @@
+[33mb98cff3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m)[m docs: enrichit le README (fonctionnalités, stack, architecture)
+[33m6481f6e[m feat: ajoute le crédit Dahu-Concept en bas de la page Paramètres
+[33mcf1ae36[m fix: interrupteurs (Switch) uniquement en orange, plus de mélange vert/orange
+[33mae32dab[m fix: corrige les champs de saisie réduits à un simple trait sur Android
+[33m809eba2[m fix: simplifie le splashscreen, retire le plugin de branding personnalisé
+[33mdb4dc20[m fix: bug critique onPress, déplace les préférences d'alertes, ajoute les suggestions
+[33m840901b[m feat: menu à 3 onglets, écran Paramètres, préférences d'alertes, splash officiel
+[33mfb9a97f[m feat: pagination et recherche dans l'écran "mes alertes"
+[33mae7ff66[m fix: icône corbeille, champ email peu visible et splashscreen Android officiel
+[33mc4ac1e2[m fix: splash screen plein écran via enableFullScreenImage_legacy
+[33m6270f84[m fix: splash screen plein écran via enableFullScreenImage_legacy
+[33mfaa5353[m fix: configure expo-splash-screen plugin properly
+[33mfae6bca[m fix: explicit react-dom dependency to fix lock file sync
+[33m42b8ac3[m fix: force react-dom version to match react via overrides
+[33ma02525b[m fix: regenerate package-lock.json from scratch
+[33m581fe75[m fix: sync package-lock.json
+[33mc9c6a00[m feat: splash screen, identité graphique, écran Surveiller
+[33m7fa8f2f[m feat: 4 écrans complets - Check, Manage, API, CGV
+[33m42166ba[m init: DoomName app SDK54 - structure de base avec 4 onglets
+[33m3bb74e3[m Initial commit
+[33me03fb08[m[33m ([m[1;31morigin/main[m[33m)[m Initial commit

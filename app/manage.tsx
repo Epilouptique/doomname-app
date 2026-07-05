@@ -8,6 +8,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, Radius } from '../constants/theme';
+import { syncPushToken, unregisterPushToken } from '../lib/notifications';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 
@@ -99,6 +100,7 @@ export default function ManageScreen() {
         setUserEmail(data.email);
         setStep('manage');
         loadSubs(data.email);
+        syncPushToken(data.email); // associe le token push à ce compte
       } else {
         setError('Lien invalide ou expiré.');
       }
@@ -178,6 +180,7 @@ export default function ManageScreen() {
   };
 
   const logout = async () => {
+    await unregisterPushToken(); // ne plus notifier cet appareil pour ce compte
     await AsyncStorage.removeItem('doomname_email');
     setUserEmail('');
     setStep('email');

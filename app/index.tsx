@@ -7,6 +7,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColors, Radius } from '../constants/theme';
+import { syncPushToken } from '../lib/notifications';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 const COMMON_TLDS = ['com', 'io', 'studio', 'net', 'fr', 'org', 'co', 'app'];
@@ -69,6 +70,7 @@ export default function CheckScreen() {
         setSubscribeMsg('✅ Alerte ajoutée à votre liste !');
         await AsyncStorage.setItem('doomname_email', email);
         setSavedEmail(email);
+        syncPushToken(email); // associe le token push à ce compte
       } else {
         setSubscribeMsg(data.error || 'Erreur lors de l\'ajout.');
       }

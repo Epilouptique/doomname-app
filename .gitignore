@@ -33,9 +33,16 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Firebase (ne pas commiter les fichiers de config Google Services)
+google-services.json
+GoogleService-Info.plist
+
 # typescript
 *.tsbuildinfo
 
 # generated native folders
 /ios
 /android
+
+# firebase service account key
+domainwatch-7da80-firebase-adminsdk-fbsvc-f3cfa5e8fe.json  

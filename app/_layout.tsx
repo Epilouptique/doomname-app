@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme, View, Text, Image, StyleSheet } from 'react-native';
+import { useColorScheme, View, Text, Image, StyleSheet, Platform } from 'react-native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Colors } from '../constants/theme';
+import { registerForPushNotificationsAsync, syncPushToken } from '../lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -32,6 +34,7 @@ export default function RootLayout() {
   const scheme = useColorScheme();
   const dark = scheme === 'dark';
   const c = dark ? Colors.dark : Colors.light;
+  const router = useRouter();
 
   const [fontsLoaded] = useFonts({
     AmazDoom: require('../assets/fonts/AmazDooMLeft.ttf'),
@@ -40,6 +43,27 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync();
   }, [fontsLoaded]);
+
+  // Notifications push (mobile uniquement, jamais sur le web).
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    // 1er lancement : demande la permission, récupère le token, et l'associe
+    // à l'email si l'utilisateur est déjà connecté.
+    registerForPushNotificationsAsync().then(() => syncPushToken());
+
+    // Ouvre "Mes alertes" quand on tape sur une notification.
+    const goToAlerts = () => router.push('/manage');
+
+    const sub = Notifications.addNotificationResponseReceivedListener(goToAlerts);
+
+    // Cas "démarrage à froid" : l'app a été ouverte en tapant une notif.
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (response) goToAlerts();
+    });
+
+    return () => sub.remove();
+  }, [router]);
 
   if (!fontsLoaded) return null;
 
