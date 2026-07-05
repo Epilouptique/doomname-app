@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Tabs, useRouter } from 'expo-router';
+import { useEffect, useRef, useCallback } from 'react';
+import { Tabs, useRouter, useRootNavigationState } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme, View, Text, Image, StyleSheet, Platform } from 'react-native';
 import { useFonts } from 'expo-font';
@@ -36,6 +36,16 @@ export default function RootLayout() {
   const c = dark ? Colors.dark : Colors.light;
   const router = useRouter();
 
+  // Indique si la navigation racine (Tabs) est montée et prête à recevoir un
+  // router.push(). Au démarrage à froid via un tap de notification, la réponse
+  // arrive avant que ce soit le cas : on met alors la cible en file d'attente.
+  const navState = useRootNavigationState();
+  const navReady = !!navState?.key;
+  const navReadyRef = useRef(false);
+  navReadyRef.current = navReady;
+  const pendingNavRef = useRef<string | null>(null);
+  const coldHandledRef = useRef(false);
+
   const [fontsLoaded] = useFonts({
     AmazDoom: require('../assets/fonts/AmazDooMLeft.ttf'),
   });
@@ -43,6 +53,21 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync();
   }, [fontsLoaded]);
+
+  // Navigue si la navigation est prête, sinon met la cible en attente.
+  const navigateWhenReady = useCallback((target: string) => {
+    if (navReadyRef.current) router.push(target);
+    else pendingNavRef.current = target;
+  }, [router]);
+
+  // Dès que la navigation devient prête, on vide la cible éventuellement en attente.
+  useEffect(() => {
+    if (navReady && pendingNavRef.current) {
+      const target = pendingNavRef.current;
+      pendingNavRef.current = null;
+      router.push(target);
+    }
+  }, [navReady, router]);
 
   // Notifications push (mobile uniquement, jamais sur le web).
   useEffect(() => {
@@ -63,18 +88,23 @@ export default function RootLayout() {
       if (data?.domain) qs.set('flash', data.domain);
       if (data?.type) qs.set('flashType', data.type); // domain_available | domain_taken
       const s = qs.toString();
-      router.push(s ? `/manage?${s}` : '/manage');
+      navigateWhenReady(s ? `/manage?${s}` : '/manage');
     };
 
     const sub = Notifications.addNotificationResponseReceivedListener(goToAlerts);
 
-    // Cas "démarrage à froid" : l'app a été ouverte en tapant une notif.
+    // Cas "démarrage à froid" : l'app a été ouverte en tapant une notif. On ne le
+    // traite qu'une fois, et la navigation est différée jusqu'à ce que le
+    // routeur soit prêt (évite l'écran blanc).
     Notifications.getLastNotificationResponseAsync().then(response => {
-      if (response) goToAlerts(response);
+      if (response && !coldHandledRef.current) {
+        coldHandledRef.current = true;
+        goToAlerts(response);
+      }
     });
 
     return () => sub.remove();
-  }, [router]);
+  }, [navigateWhenReady]);
 
   if (!fontsLoaded) return null;
 
