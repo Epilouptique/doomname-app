@@ -124,7 +124,7 @@ export default function SettingsScreen() {
             </View>
           </>
         ) : (
-          <Text style={[s.info, { color: c.textMuted }]}>Connectez-vous depuis "Mes alertes" pour gérer vos préférences.</Text>
+          <Text style={[s.info, { color: c.textMuted }]}>Connectez-vous depuis l'écran principal pour gérer vos préférences.</Text>
         )}
       </View>
 
