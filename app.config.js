@@ -7,6 +7,13 @@ module.exports = {
     icon: './assets/doomname-logo-light-512.png',
     scheme: 'doomname',
     userInterfaceStyle: 'automatic',
+    // EAS Update (OTA) : le runtime suit la version de l'app ; un binaire n'accepte
+    // que les updates compilées avec la même runtimeVersion.
+    runtimeVersion: { policy: 'appVersion' },
+    updates: {
+      url: 'https://u.expo.dev/04249caf-a88f-47d7-bbfe-93df7e3e4390',
+      fallbackToCacheTimeout: 0,
+    },
     ios: {
       supportsTablet: false,
       bundleIdentifier: 'fr.dahuconcept.doomname',
