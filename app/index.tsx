@@ -3,10 +3,19 @@ import {
   View, Text, TextInput, TouchableOpacity, Image,
   StyleSheet, useColorScheme, ActivityIndicator,
   ScrollView, Modal, Alert, FlatList, useWindowDimensions, Keyboard,
+  LayoutAnimation, Platform, UIManager,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+// Transition douce (~180ms) pour l'apparition/disparition des blocs filtre/recherche.
+const animate = () =>
+  LayoutAnimation.configureNext(
+    LayoutAnimation.create(180, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity)
+  );
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -29,8 +38,8 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 // Une ligne d'alerte avec actions par swipe.
-// Swipe vers la droite (actions à gauche) → supprimer (confirmation).
-// Swipe vers la gauche (actions à droite) → activer / désactiver.
+// Swipe vers la droite → supprimer (confirmation). Swipe vers la gauche →
+// activer / désactiver (sans confirmation).
 function AlertRow({ item, c, hl, onDelete, onToggle }: {
   item: any;
   c: any;
@@ -43,6 +52,8 @@ function AlertRow({ item, c, hl, onDelete, onToggle }: {
   const bd = hl === 'green' ? c.successBorder : hl === 'red' ? c.dangerBorder : c.border;
   const isAvailable = item.last_status === 'available';
 
+  // renderRightActions = révélé en glissant vers la GAUCHE → activer/désactiver.
+  // renderLeftActions  = révélé en glissant vers la DROITE → supprimer.
   return (
     <ReanimatedSwipeable
       ref={ref}
@@ -62,11 +73,13 @@ function AlertRow({ item, c, hl, onDelete, onToggle }: {
         </View>
       )}
       onSwipeableOpen={(direction) => {
-        if (direction === 'left') onDelete(item.id, item.domain, () => ref.current?.close());
-        else { onToggle(item.id, item.active); ref.current?.close(); }
+        // 'left' = glissé vers la gauche → activer/désactiver (sans confirmation).
+        // 'right' = glissé vers la droite → supprimer (avec confirmation).
+        if (direction === 'left') { onToggle(item.id, item.active); ref.current?.close(); }
+        else onDelete(item.id, item.domain, () => ref.current?.close());
       }}
     >
-      <View style={[s.card, { backgroundColor: bg, borderColor: bd, opacity: item.active ? 1 : 0.55 }]}>
+      <View style={[s.card, { backgroundColor: bg, borderColor: bd }]}>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Text style={[s.domain, { color: c.text }]}>{item.domain}</Text>
@@ -107,12 +120,13 @@ export default function HomeScreen() {
   // Liste des alertes
   const [subs, setSubs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'available'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'available'>('active');
   const [filterOpen, setFilterOpen] = useState(false);
   const [listSearchOpen, setListSearchOpen] = useState(false);
   const [listSearch, setListSearch] = useState('');
   const [highlight, setHighlight] = useState<Record<number, 'green' | 'red'>>({});
   const pendingFlashRef = useRef<{ domain: string; color: 'green' | 'red' } | null>(null);
+  const pagerRef = useRef<FlatList>(null);
 
   // Modale email (abonnement sans compte) et modale connexion
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -124,7 +138,8 @@ export default function HomeScreen() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
-  const params = useLocalSearchParams<{ filter?: string; flash?: string; flashType?: string }>();
+  const params = useLocalSearchParams<{ filter?: string; flash?: string; flashType?: string; token?: string }>();
+  const processedTokenRef = useRef<string | null>(null);
 
   // ─── Chargement initial ──────────────────────────────────────────────────
   useEffect(() => {
@@ -133,16 +148,14 @@ export default function HomeScreen() {
     });
   }, []);
 
-  // Magic link ouvert depuis un e-mail (schéma doomname://…?token=)
+  // Magic link ouvert depuis un e-mail : le token arrive en paramètre via la
+  // route de redirection /manage → /?token=… (schéma doomname://manage?token=).
   useEffect(() => {
-    const handleUrl = (url: string) => {
-      const { queryParams } = Linking.parse(url);
-      if (queryParams?.token) verifyToken(queryParams.token as string);
-    };
-    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
-    Linking.getInitialURL().then(url => { if (url) handleUrl(url); });
-    return () => sub.remove();
-  }, []);
+    if (params.token && processedTokenRef.current !== params.token) {
+      processedTokenRef.current = params.token as string;
+      verifyToken(params.token as string);
+    }
+  }, [params.token]);
 
   // Filtre transmis par le tap sur une notification.
   useEffect(() => {
@@ -165,6 +178,12 @@ export default function HomeScreen() {
 
   // Rafraîchit au focus de l'écran.
   useFocusEffect(useCallback(() => { if (userEmail) loadSubs(userEmail); }, [userEmail]));
+
+  // Changement de filtre / recherche : on revient à la première page sans
+  // remonter la liste (réactivité immédiate).
+  useEffect(() => {
+    pagerRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [filter, listSearch]);
 
   // Rafraîchit + flash ciblé si une notification arrive au premier plan.
   useEffect(() => {
@@ -265,6 +284,16 @@ export default function HomeScreen() {
     await subscribe(domain.trim().toLowerCase(), e);
   };
 
+  // Ajout direct (connecté) : abonne sans étape intermédiaire et reste en mode
+  // recherche pour enchaîner plusieurs ajouts. Champ vide → ouvre/focus la barre.
+  const addDirect = async (d: string) => {
+    const dom = d.trim().toLowerCase();
+    if (!dom) { inputRef.current?.focus(); return; }
+    await subscribe(dom, userEmail);
+    setDomain('');
+    inputRef.current?.focus();
+  };
+
   // ─── Connexion (magic link) ────────────────────────────────────────────────
   const requestMagicLink = async () => {
     const e = loginEmail.trim().toLowerCase();
@@ -310,7 +339,7 @@ export default function HomeScreen() {
   const logout = async () => {
     await unregisterPushToken();
     await AsyncStorage.removeItem('doomname_email');
-    setUserEmail(''); setSubs([]); setFilter('all'); setFilterOpen(false);
+    setUserEmail(''); setSubs([]); setFilter('active'); setFilterOpen(false);
   };
 
   // ─── Actions sur un domaine ────────────────────────────────────────────────
@@ -352,7 +381,7 @@ export default function HomeScreen() {
 
   const connected = !!userEmail;
 
-  const filters: Array<typeof filter> = ['all', 'active', 'inactive', 'available'];
+  const filters: Array<typeof filter> = ['active', 'inactive', 'available', 'all'];
   const filterLabel = (f: string) => f === 'all' ? 'Tous' : f === 'active' ? 'Actifs' : f === 'inactive' ? 'Désactivés' : 'Disponible';
 
   return (
@@ -363,22 +392,31 @@ export default function HomeScreen() {
           <Image source={dark ? logoDark : logoLight} style={s.logo} resizeMode="contain" />
           <Text style={[s.brand, { color: c.accent }]}>DoomName</Text>
         </View>
-        {connected && (
-          <View style={s.headerRight}>
-            <TouchableOpacity onPress={() => { setListSearchOpen(o => !o); if (listSearchOpen) setListSearch(''); }} hitSlop={8}>
-              <Ionicons name="search-outline" size={23} color={listSearchOpen ? c.accent : c.textMuted} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setFilterOpen(o => !o)} hitSlop={8}>
-              <Ionicons name="funnel-outline" size={22} color={filterOpen ? c.accent : c.textMuted} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/settings')} hitSlop={8}>
-              <Ionicons name="settings-outline" size={23} color={c.textMuted} />
-            </TouchableOpacity>
+        <View style={s.headerRight}>
+          {connected && (
+            <>
+              <TouchableOpacity onPress={() => { animate(); setListSearchOpen(o => !o); if (listSearchOpen) setListSearch(''); }} hitSlop={8}>
+                <Ionicons name="search-outline" size={23} color={listSearchOpen ? c.accent : c.textMuted} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { animate(); setFilterOpen(o => !o); }} hitSlop={8}>
+                <Ionicons name="funnel-outline" size={22} color={filterOpen ? c.accent : c.textMuted} />
+              </TouchableOpacity>
+            </>
+          )}
+          {/* Paramètres visible même déconnecté. */}
+          <TouchableOpacity onPress={() => router.push('/settings')} hitSlop={8}>
+            <Ionicons name="settings-outline" size={23} color={c.textMuted} />
+          </TouchableOpacity>
+          {connected ? (
             <TouchableOpacity onPress={logout} hitSlop={8}>
               <Ionicons name="log-out-outline" size={24} color={c.textMuted} />
             </TouchableOpacity>
-          </View>
-        )}
+          ) : (
+            <TouchableOpacity onPress={() => { setLoginOpen(true); setLoginStep('email'); }} hitSlop={8}>
+              <Ionicons name="log-in-outline" size={24} color={c.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Barre de recherche (vérification de domaine) */}
@@ -394,8 +432,8 @@ export default function HomeScreen() {
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
             autoCapitalize="none" autoCorrect={false}
-            returnKeyType="search" keyboardType="url"
-            onSubmitEditing={() => checkDomain()}
+            returnKeyType={connected ? 'done' : 'search'} keyboardType="url"
+            onSubmitEditing={() => connected ? addDirect(domain) : checkDomain()}
           />
           {domain.length > 0 && (
             <TouchableOpacity onPress={() => { setDomain(''); setResult(null); setSubscribeMsg(''); }} style={{ paddingHorizontal: 8 }} hitSlop={8}>
@@ -403,21 +441,34 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity style={[s.actionBtn, { backgroundColor: c.accent }]} onPress={() => checkDomain()} disabled={checking}>
-          {checking ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="search" size={20} color="#fff" />}
+        <TouchableOpacity
+          style={[s.actionBtn, { backgroundColor: c.accent }]}
+          onPress={() => connected ? addDirect(domain) : checkDomain()}
+          disabled={checking || subscribing}
+        >
+          {(checking || subscribing)
+            ? <ActivityIndicator color="#fff" size="small" />
+            : <Ionicons name={connected ? 'add' : 'search'} size={connected ? 26 : 20} color="#fff" />}
         </TouchableOpacity>
       </View>
 
       {/* Corps : suggestions (focus) OU liste / bouton connexion */}
       {searchFocused ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
-          <Text style={[s.hint, { color: c.textMuted }]}>Choisissez une extension :</Text>
+          {subscribeMsg ? (
+            <View style={[s.feedbackBox, {
+              backgroundColor: subscribeMsg.startsWith('✅') ? c.successDim : c.dangerDim,
+              borderColor: subscribeMsg.startsWith('✅') ? c.successBorder : c.dangerBorder,
+            }]}>
+              <Text style={[s.feedbackText, { color: subscribeMsg.startsWith('✅') ? c.success : c.danger }]}>{subscribeMsg}</Text>
+            </View>
+          ) : null}
           <View style={s.suggestionsWrap}>
             {suggestions.map(d => (
               <TouchableOpacity
                 key={d}
                 style={[s.suggestionChip, { backgroundColor: c.surface2, borderColor: c.borderMd }]}
-                onPress={() => { setDomain(d); checkDomain(d); }}
+                onPress={() => { connected ? addDirect(d) : (setDomain(d), checkDomain(d)); }}
               >
                 <Text style={[s.suggestionText, { color: c.textMuted }]}>{d}</Text>
                 <View style={[s.suggestionPlus, { backgroundColor: c.accent }]}><Text style={s.suggestionPlusText}>+</Text></View>
@@ -485,7 +536,7 @@ export default function HomeScreen() {
               )}
               {listSearchOpen && (
                 <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
-                  <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder }]}>
+                  <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder }]}>
                     <TextInput
                       style={[s.inputInner, { color: c.text }]}
                       placeholder="Rechercher dans mes alertes…"
@@ -497,13 +548,13 @@ export default function HomeScreen() {
                 </View>
               )}
 
-              {loading ? (
+              {loading && filteredSubs.length === 0 ? (
                 <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} />
               ) : filteredSubs.length === 0 ? (
                 <Text style={[s.empty, { color: c.textDim }]}>Aucune alerte pour ce filtre.</Text>
               ) : (
                 <FlatList
-                  key={filter + listSearch}
+                  ref={pagerRef}
                   data={pages}
                   keyExtractor={(_, i) => `page-${i}`}
                   horizontal
@@ -543,7 +594,7 @@ export default function HomeScreen() {
           <View style={[s.modalBox, { backgroundColor: c.surface, borderColor: c.border }]}>
             <Text style={[s.modalTitle, { color: c.text }]}>Votre email</Text>
             <Text style={[s.modalSub, { color: c.textMuted }]}>Pour être alerté sur ce domaine.</Text>
-            <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
+            <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
               <TextInput
                 style={[s.inputInner, { color: c.text }]}
                 placeholder="votre@email.com" placeholderTextColor={c.textDim}
@@ -569,7 +620,7 @@ export default function HomeScreen() {
               <>
                 <Text style={[s.modalTitle, { color: c.text }]}>Connexion</Text>
                 <Text style={[s.modalSub, { color: c.textMuted }]}>Entrez votre email pour recevoir un lien de connexion.</Text>
-                <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
+                <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
                   <TextInput
                     style={[s.inputInner, { color: c.text }]}
                     placeholder="votre@email.com" placeholderTextColor={c.textDim}
@@ -585,7 +636,7 @@ export default function HomeScreen() {
               <>
                 <Text style={[s.modalTitle, { color: c.text }]}>Lien envoyé</Text>
                 <Text style={[s.modalSub, { color: c.textMuted }]}>Ouvrez le lien reçu par email, ou collez le token ci-dessous.</Text>
-                <View style={[s.inputWrap, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
+                <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
                   <TextInput
                     style={[s.inputInner, { color: c.text }]}
                     placeholder="Token" placeholderTextColor={c.textDim}
@@ -595,9 +646,6 @@ export default function HomeScreen() {
                 </View>
                 <TouchableOpacity style={[s.loginBtn, { backgroundColor: c.accent }]} onPress={() => verifyToken()} disabled={loginLoading}>
                   {loginLoading ? <ActivityIndicator color="#fff" /> : <Text style={s.loginBtnText}>Valider</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setLoginStep('email')} style={{ marginTop: 12 }}>
-                  <Text style={{ color: c.accent, textAlign: 'center' }}>← Retour</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -624,6 +672,9 @@ const s = StyleSheet.create({
 
   searchRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
   inputWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', height: 48, borderRadius: Radius.md, borderWidth: 1.5 },
+  // Variante hauteur fixe pour les parents en colonne (modales, recherche liste) :
+  // sans flex, le champ garde bien sa hauteur.
+  inputWrapFull: { width: '100%', flexDirection: 'row', alignItems: 'center', height: 48, borderRadius: Radius.md, borderWidth: 1.5 },
   inputInner: { flex: 1, height: '100%', fontSize: 15, paddingHorizontal: 14 },
   actionBtn: { width: 48, height: 48, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center' },
 

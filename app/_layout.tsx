@@ -95,6 +95,8 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" />
+        {/* Redirection du magic link doomname://manage?token=… vers l'accueil. */}
+        <Stack.Screen name="manage" />
         {/* Flèche retour native (←) + titre "DoomName" (remplace le logo, 4e). */}
         <Stack.Screen name="settings" options={{ headerShown: true, title: 'DoomName' }} />
         <Stack.Screen name="developer" options={{ headerShown: true, title: 'API développeurs' }} />
