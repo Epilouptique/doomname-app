@@ -4,6 +4,7 @@ import {
   StyleSheet, useColorScheme, ActivityIndicator,
   ScrollView, Modal
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColors, Radius } from '../constants/theme';
@@ -15,6 +16,7 @@ const COMMON_TLDS = ['com', 'io', 'studio', 'net', 'fr', 'org', 'co', 'app'];
 export default function CheckScreen() {
   const dark = useColorScheme() === 'dark';
   const c = useColors(dark);
+  const router = useRouter();
   const inputRef = useRef<TextInput>(null);
 
   const [domain, setDomain] = useState('');
@@ -71,6 +73,12 @@ export default function CheckScreen() {
         await AsyncStorage.setItem('doomname_email', email);
         setSavedEmail(email);
         syncPushToken(email); // associe le token push à ce compte
+        // Ajout d'un domaine disponible : on bascule sur "Mes alertes" filtré
+        // "Disponible" avec un flash vert ciblé sur ce domaine (cohérent avec
+        // le tap de notification).
+        if (data.last_status === 'available') {
+          router.push(`/manage?filter=available&flash=${encodeURIComponent(d)}&flashType=domain_available`);
+        }
       } else {
         setSubscribeMsg(data.error || 'Erreur lors de l\'ajout.');
       }
