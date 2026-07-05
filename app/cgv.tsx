@@ -1,7 +1,8 @@
-import { ScrollView, View, Text, StyleSheet, useColorScheme } from 'react-native';
+import { ScrollView, View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '../lib/theme';
 
 export default function CGVScreen() {
-  const dark = useColorScheme() === 'dark';
+  const { dark } = useTheme();
   const s = styles(dark);
 
   return (

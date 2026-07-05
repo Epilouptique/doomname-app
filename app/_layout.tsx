@@ -1,27 +1,34 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Stack, useRouter, useRootNavigationState } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import { useColors } from '../constants/theme';
+import { ThemeProvider, useTheme } from '../lib/theme';
 import { registerForPushNotificationsAsync, syncPushToken } from '../lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const dark = useColorScheme() === 'dark';
+  return (
+    <ThemeProvider>
+      <RootLayoutInner />
+    </ThemeProvider>
+  );
+}
+
+function RootLayoutInner() {
+  const { dark } = useTheme();
   const c = useColors(dark);
   const router = useRouter();
 
-  // Navigation prête (le Stack est monté) ? Au démarrage à froid via un tap de
-  // notification, la réponse arrive avant : on met la cible en file d'attente.
-  const navState = useRootNavigationState();
-  const navReady = !!navState?.key;
-  const navReadyRef = useRef(false);
-  navReadyRef.current = navReady;
+  const rootNavState = useRootNavigationState();
+  const [isNavReady, setIsNavReady] = useState(false);
+  const isNavReadyRef = useRef(false);
+  isNavReadyRef.current = isNavReady;
   const pendingNavRef = useRef<string | null>(null);
   const coldHandledRef = useRef(false);
 
@@ -33,18 +40,27 @@ export default function RootLayout() {
     if (fontsLoaded) SplashScreen.hideAsync();
   }, [fontsLoaded]);
 
-  const navigateWhenReady = useCallback((target: string) => {
-    if (navReadyRef.current) router.replace(target);
-    else pendingNavRef.current = target;
+  // Prêt à naviguer UNIQUEMENT quand le layout est monté (fonts chargées) ET la
+  // navigation racine initialisée — évite « navigate before mounting Root Layout ».
+  useEffect(() => {
+    if (fontsLoaded && rootNavState?.key) setIsNavReady(true);
+  }, [fontsLoaded, rootNavState?.key]);
+
+  const flushNav = useCallback(() => {
+    if (!isNavReadyRef.current || !pendingNavRef.current) return;
+    const target = pendingNavRef.current;
+    pendingNavRef.current = null;
+    // Différé au prochain tick pour s'exécuter après le commit courant.
+    setTimeout(() => router.replace(target as any), 0);
   }, [router]);
 
-  useEffect(() => {
-    if (navReady && pendingNavRef.current) {
-      const target = pendingNavRef.current;
-      pendingNavRef.current = null;
-      router.replace(target);
-    }
-  }, [navReady, router]);
+  useEffect(() => { if (isNavReady) flushNav(); }, [isNavReady, flushNav]);
+
+  // Met la cible en file d'attente et tente de naviguer (no-op si pas prêt).
+  const navigateWhenReady = useCallback((target: string) => {
+    pendingNavRef.current = target;
+    flushNav();
+  }, [flushNav]);
 
   // Notifications push (mobile uniquement, jamais sur le web).
   useEffect(() => {
@@ -52,8 +68,6 @@ export default function RootLayout() {
 
     registerForPushNotificationsAsync().then(() => syncPushToken());
 
-    // Tap sur une notification → écran principal, avec le filtre + le domaine à
-    // mettre en évidence transmis dans le payload.
     const goToMain = (response?: Notifications.NotificationResponse) => {
       const data = response?.notification?.request?.content?.data as
         { filter?: string; domain?: string; type?: string } | undefined;
@@ -67,7 +81,7 @@ export default function RootLayout() {
 
     const sub = Notifications.addNotificationResponseReceivedListener(goToMain);
 
-    // Démarrage à froid : traité une seule fois, navigation différée si besoin.
+    // Démarrage à froid : la réponse peut arriver avant le montage → mise en file.
     Notifications.getLastNotificationResponseAsync().then(response => {
       if (response && !coldHandledRef.current) {
         coldHandledRef.current = true;
@@ -94,7 +108,9 @@ export default function RootLayout() {
           headerShadowVisible: false,
         }}
       >
-        <Stack.Screen name="index" />
+        {/* gestureEnabled:false : le swipe sur les items ne doit jamais déclencher
+            de navigation/back sur l'écran principal. */}
+        <Stack.Screen name="index" options={{ gestureEnabled: false }} />
         {/* Redirection du magic link doomname://manage?token=… vers l'accueil. */}
         <Stack.Screen name="manage" />
         {/* Flèche retour native (←) + titre "DoomName" (remplace le logo, 4e). */}

@@ -1,12 +1,20 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Image,
-  StyleSheet, useColorScheme, ActivityIndicator,
-  ScrollView, Modal, Alert, FlatList, useWindowDimensions, Keyboard,
+  StyleSheet, ActivityIndicator,
+  ScrollView, Modal, FlatList, useWindowDimensions, Keyboard,
   LayoutAnimation, Platform, UIManager,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useColors, Radius } from '../constants/theme';
+import { useTheme } from '../lib/theme';
+import { syncPushToken, unregisterPushToken } from '../lib/notifications';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -16,12 +24,6 @@ const animate = () =>
   LayoutAnimation.configureNext(
     LayoutAnimation.create(180, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity)
   );
-import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useColors, Radius } from '../constants/theme';
-import { syncPushToken, unregisterPushToken } from '../lib/notifications';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 const COMMON_TLDS = ['com', 'io', 'studio', 'net', 'fr', 'org', 'co', 'app'];
@@ -37,68 +39,86 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-// Une ligne d'alerte avec actions par swipe.
-// Swipe vers la droite → supprimer (confirmation). Swipe vers la gauche →
-// activer / désactiver (sans confirmation).
-function AlertRow({ item, c, hl, onDelete, onToggle }: {
+// Ligne d'alerte avec swipe progressif (Reanimated) :
+//  • glissé vers la GAUCHE → activer/désactiver ; vers la DROITE → supprimer.
+//  • sous 50% de la largeur : icône seule ; au-dessus : icône + texte.
+//  • au relâchement : action si ≥ 50%, sinon retour à l'état initial.
+// Mémoïsé pour éviter les re-rendus de toute la liste au moindre changement d'état.
+const AlertRow = memo(function AlertRow({ item, c, hl, onDelete, onToggle }: {
   item: any;
   c: any;
   hl?: 'green' | 'red';
-  onDelete: (id: number, domain: string, onDone: () => void) => void;
+  onDelete: (id: number, domain: string) => void;
   onToggle: (id: number, active: boolean) => void;
 }) {
-  const ref = useRef<SwipeableMethods>(null);
+  const tx = useSharedValue(0);
+  const rowW = useSharedValue(0);
   const bg = hl === 'green' ? c.successDim : hl === 'red' ? c.dangerDim : c.surface;
   const bd = hl === 'green' ? c.successBorder : hl === 'red' ? c.dangerBorder : c.border;
   const isAvailable = item.last_status === 'available';
 
-  // renderRightActions = révélé en glissant vers la GAUCHE → activer/désactiver.
-  // renderLeftActions  = révélé en glissant vers la DROITE → supprimer.
+  const pan = Gesture.Pan()
+    .activeOffsetX([-15, 15])
+    .failOffsetY([-12, 12])
+    .onUpdate(e => { tx.value = e.translationX; })
+    .onEnd(() => {
+      const half = rowW.value * 0.5;
+      if (tx.value <= -half) {
+        // Glissé à gauche assez loin → toggle, puis retour.
+        tx.value = withTiming(0, { duration: 160 });
+        runOnJS(onToggle)(item.id, item.active);
+      } else if (tx.value >= half) {
+        // Glissé à droite assez loin → suppression (sort par la droite).
+        tx.value = withTiming(rowW.value, { duration: 160 });
+        runOnJS(onDelete)(item.id, item.domain);
+      } else {
+        tx.value = withTiming(0, { duration: 160 });
+      }
+    });
+
+  const cardStyle = useAnimatedStyle(() => ({ transform: [{ translateX: tx.value }] }));
+  // Action gauche (Supprimer) révélée quand on glisse à droite (tx > 0).
+  const deleteStyle = useAnimatedStyle(() => ({ opacity: tx.value > 0 ? 1 : 0 }));
+  const deleteTextStyle = useAnimatedStyle(() => ({ opacity: tx.value >= rowW.value * 0.5 ? 1 : 0 }));
+  // Action droite (Activer/Désactiver) révélée quand on glisse à gauche (tx < 0).
+  const toggleStyle = useAnimatedStyle(() => ({ opacity: tx.value < 0 ? 1 : 0 }));
+  const toggleTextStyle = useAnimatedStyle(() => ({ opacity: tx.value <= -rowW.value * 0.5 ? 1 : 0 }));
+
   return (
-    <ReanimatedSwipeable
-      ref={ref}
-      friction={2}
-      leftThreshold={70}
-      rightThreshold={70}
-      renderLeftActions={() => (
-        <View style={[s.swipeAction, { backgroundColor: c.danger, alignItems: 'flex-start' }]}>
-          <Ionicons name="trash-outline" size={20} color="#fff" />
-          <Text style={s.swipeText}>Supprimer</Text>
-        </View>
-      )}
-      renderRightActions={() => (
-        <View style={[s.swipeAction, { backgroundColor: c.accent, alignItems: 'flex-end' }]}>
-          <Ionicons name={item.active ? 'pause-outline' : 'play-outline'} size={20} color="#fff" />
-          <Text style={s.swipeText}>{item.active ? 'Désactiver' : 'Activer'}</Text>
-        </View>
-      )}
-      onSwipeableOpen={(direction) => {
-        // 'left' = glissé vers la gauche → activer/désactiver (sans confirmation).
-        // 'right' = glissé vers la droite → supprimer (avec confirmation).
-        if (direction === 'left') { onToggle(item.id, item.active); ref.current?.close(); }
-        else onDelete(item.id, item.domain, () => ref.current?.close());
-      }}
-    >
-      <View style={[s.card, { backgroundColor: bg, borderColor: bd }]}>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <Text style={[s.domain, { color: c.text }]}>{item.domain}</Text>
-            {isAvailable && (
-              <View style={[s.availBadge, { backgroundColor: c.successDim, borderColor: c.successBorder }]}>
-                <Text style={[s.availBadgeText, { color: c.success }]}>Disponible</Text>
-              </View>
-            )}
+    <View style={s.rowWrap} onLayout={e => { rowW.value = e.nativeEvent.layout.width; }}>
+      {/* Fond action SUPPRIMER (gauche) */}
+      <Animated.View style={[StyleSheet.absoluteFill, s.actionLayer, { backgroundColor: c.danger, justifyContent: 'flex-start' }, deleteStyle]}>
+        <Ionicons name="trash-outline" size={22} color="#fff" />
+        <Animated.Text style={[s.actionText, deleteTextStyle]}>Supprimer</Animated.Text>
+      </Animated.View>
+      {/* Fond action ACTIVER/DÉSACTIVER (droite) */}
+      <Animated.View style={[StyleSheet.absoluteFill, s.actionLayer, { backgroundColor: c.accent, justifyContent: 'flex-end' }, toggleStyle]}>
+        <Animated.Text style={[s.actionText, toggleTextStyle]}>{item.active ? 'Désactiver' : 'Activer'}</Animated.Text>
+        <Ionicons name={item.active ? 'pause-outline' : 'play-outline'} size={22} color="#fff" />
+      </Animated.View>
+
+      <GestureDetector gesture={pan}>
+        <Animated.View style={[s.card, { backgroundColor: bg, borderColor: bd }, cardStyle]}>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Text style={[s.domain, { color: c.text }]}>{item.domain}</Text>
+              {isAvailable && (
+                <View style={[s.availBadge, { backgroundColor: c.successDim, borderColor: c.successBorder }]}>
+                  <Text style={[s.availBadgeText, { color: c.success }]}>Disponible</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[s.date, { color: c.textDim }]}>{new Date(item.created_at).toLocaleDateString('fr-FR')}</Text>
           </View>
-          <Text style={[s.date, { color: c.textDim }]}>{new Date(item.created_at).toLocaleDateString('fr-FR')}</Text>
-        </View>
-        <View style={[s.statusDot, { backgroundColor: item.active ? c.success : c.textDim }]} />
-      </View>
-    </ReanimatedSwipeable>
+          <View style={[s.statusDot, { backgroundColor: item.active ? c.success : c.textDim }]} />
+        </Animated.View>
+      </GestureDetector>
+    </View>
   );
-}
+});
 
 export default function HomeScreen() {
-  const dark = useColorScheme() === 'dark';
+  const { dark } = useTheme();
   const c = useColors(dark);
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -116,6 +136,8 @@ export default function HomeScreen() {
   const [error, setError] = useState('');
   const [subscribing, setSubscribing] = useState(false);
   const [subscribeMsg, setSubscribeMsg] = useState('');
+  const [addedMain, setAddedMain] = useState(false);      // flash coche verte bouton "+"
+  const [addedChip, setAddedChip] = useState<string | null>(null); // flash coche verte sur une extension
 
   // Liste des alertes
   const [subs, setSubs] = useState<any[]>([]);
@@ -249,8 +271,10 @@ export default function HomeScreen() {
     }
   };
 
-  const subscribe = async (d: string, email: string) => {
-    setSubscribing(true);
+  // silent=true : ajout rapide (bouton "+"/suggestion) sans message ni bascule
+  // de filtre — le feedback est la coche verte gérée par addDirect.
+  const subscribe = async (d: string, email: string, silent = false): Promise<boolean> => {
+    if (!silent) setSubscribing(true);
     try {
       const res = await fetch(`${API_BASE}/api/manage/subscribe`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -258,22 +282,26 @@ export default function HomeScreen() {
       });
       const data = await res.json();
       if (data.success) {
-        setSubscribeMsg('✅ Alerte ajoutée à votre liste !');
+        if (!silent) {
+          setSubscribeMsg('✅ Alerte ajoutée à votre liste !');
+          if (data.last_status === 'available') {
+            pendingFlashRef.current = { domain: d, color: 'green' };
+            setFilter('available'); setFilterOpen(true);
+          }
+        }
         await AsyncStorage.setItem('doomname_email', email);
         setUserEmail(email);
         syncPushToken(email);
-        if (data.last_status === 'available') {
-          pendingFlashRef.current = { domain: d, color: 'green' };
-          setFilter('available'); setFilterOpen(true);
-        }
         loadSubs(email);
-      } else {
-        setSubscribeMsg(data.error || 'Erreur lors de l\'ajout.');
+        return true;
       }
+      if (!silent) setSubscribeMsg(data.error || 'Erreur lors de l\'ajout.');
+      return false;
     } catch {
-      setSubscribeMsg('Impossible d\'ajouter l\'alerte.');
+      if (!silent) setSubscribeMsg('Impossible d\'ajouter l\'alerte.');
+      return false;
     } finally {
-      setSubscribing(false);
+      if (!silent) setSubscribing(false);
     }
   };
 
@@ -284,14 +312,21 @@ export default function HomeScreen() {
     await subscribe(domain.trim().toLowerCase(), e);
   };
 
-  // Ajout direct (connecté) : abonne sans étape intermédiaire et reste en mode
-  // recherche pour enchaîner plusieurs ajouts. Champ vide → ouvre/focus la barre.
-  const addDirect = async (d: string) => {
+  // Ajout direct (connecté) : abonne silencieusement et affiche une coche verte
+  // ~1s (sur le "+" ou l'extension cliquée), sans quitter le mode recherche ni
+  // masquer les suggestions. source = 'main' (bouton +) ou le domaine (chip).
+  const addDirect = async (d: string, source: 'main' | string) => {
     const dom = d.trim().toLowerCase();
     if (!dom) { inputRef.current?.focus(); return; }
-    await subscribe(dom, userEmail);
-    setDomain('');
-    inputRef.current?.focus();
+    const ok = await subscribe(dom, userEmail, true);
+    if (!ok) return;
+    if (source === 'main') {
+      setAddedMain(true);
+      setTimeout(() => setAddedMain(false), 1000);
+    } else {
+      setAddedChip(dom);
+      setTimeout(() => setAddedChip(prev => (prev === dom ? null : prev)), 1000);
+    }
   };
 
   // ─── Connexion (magic link) ────────────────────────────────────────────────
@@ -342,42 +377,49 @@ export default function HomeScreen() {
     setUserEmail(''); setSubs([]); setFilter('active'); setFilterOpen(false);
   };
 
-  // ─── Actions sur un domaine ────────────────────────────────────────────────
-  const toggleSub = async (id: number, currentActive: boolean) => {
+  // ─── Actions sur un domaine (mémoïsées → pas de re-render des lignes) ────────
+  const toggleSub = useCallback(async (id: number, currentActive: boolean) => {
     setSubs(prev => prev.map(s => s.id === id ? { ...s, active: !currentActive } : s));
     try {
       await fetch(`${API_BASE}/api/manage/subscription/${id}/toggle?email=${encodeURIComponent(userEmail)}`, { method: 'PATCH' });
     } catch {
       setSubs(prev => prev.map(s => s.id === id ? { ...s, active: currentActive } : s));
     }
-  };
+  }, [userEmail]);
 
-  const deleteSub = (id: number, dom: string, onDone?: () => void) => {
-    Alert.alert('Supprimer', `Supprimer l'alerte pour ${dom} ?`, [
-      { text: 'Annuler', style: 'cancel', onPress: onDone },
-      {
-        text: 'Supprimer', style: 'destructive',
-        onPress: async () => {
-          setSubs(prev => prev.filter(s => s.id !== id));
-          try {
-            await fetch(`${API_BASE}/api/manage/subscription/${id}?email=${encodeURIComponent(userEmail)}`, { method: 'DELETE' });
-          } catch { if (userEmail) loadSubs(userEmail); }
-        },
-      },
-    ]);
-  };
+  // Suppression directe, sans confirmation (le swipe ≥ 50% vaut validation).
+  const deleteSub = useCallback(async (id: number) => {
+    setSubs(prev => prev.filter(s => s.id !== id));
+    try {
+      await fetch(`${API_BASE}/api/manage/subscription/${id}?email=${encodeURIComponent(userEmail)}`, { method: 'DELETE' });
+    } catch { if (userEmail) loadSubs(userEmail); }
+  }, [userEmail]);
+
+  // Ouvre l'un des blocs (recherche liste / filtre) en fermant l'autre, animé.
+  const toggleListSearch = useCallback(() => {
+    animate();
+    setListSearchOpen(o => { if (!o) setFilterOpen(false); else setListSearch(''); return !o; });
+  }, []);
+  const toggleFilter = useCallback(() => {
+    animate();
+    setFilterOpen(o => { if (!o) setListSearchOpen(false); return !o; });
+  }, []);
 
   // ─── Dérivés ───────────────────────────────────────────────────────────────
   const dm = domain.trim().toLowerCase().match(/^([a-z0-9-]+)(?:\.([a-z]{2,}))?$/);
   const suggestions = dm ? COMMON_TLDS.filter(t => t !== dm[2]).map(t => `${dm[1]}.${t}`) : [];
 
-  let filteredSubs =
-    filter === 'active' ? subs.filter(s => s.active)
-    : filter === 'inactive' ? subs.filter(s => !s.active)
-    : filter === 'available' ? subs.filter(s => s.last_status === 'available')
-    : subs;
-  if (listSearch.trim()) filteredSubs = filteredSubs.filter(s => s.domain.toLowerCase().includes(listSearch.trim().toLowerCase()));
-  const pages = chunk(filteredSubs, PAGE_SIZE);
+  const filteredSubs = useMemo(() => {
+    let list =
+      filter === 'active' ? subs.filter(s => s.active)
+      : filter === 'inactive' ? subs.filter(s => !s.active)
+      : filter === 'available' ? subs.filter(s => s.last_status === 'available')
+      : subs;
+    const q = listSearch.trim().toLowerCase();
+    if (q) list = list.filter(s => s.domain.toLowerCase().includes(q));
+    return list;
+  }, [subs, filter, listSearch]);
+  const pages = useMemo(() => chunk(filteredSubs, PAGE_SIZE), [filteredSubs]);
 
   const connected = !!userEmail;
 
@@ -395,10 +437,10 @@ export default function HomeScreen() {
         <View style={s.headerRight}>
           {connected && (
             <>
-              <TouchableOpacity onPress={() => { animate(); setListSearchOpen(o => !o); if (listSearchOpen) setListSearch(''); }} hitSlop={8}>
+              <TouchableOpacity onPress={toggleListSearch} hitSlop={8}>
                 <Ionicons name="search-outline" size={23} color={listSearchOpen ? c.accent : c.textMuted} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { animate(); setFilterOpen(o => !o); }} hitSlop={8}>
+              <TouchableOpacity onPress={toggleFilter} hitSlop={8}>
                 <Ionicons name="funnel-outline" size={22} color={filterOpen ? c.accent : c.textMuted} />
               </TouchableOpacity>
             </>
@@ -433,7 +475,7 @@ export default function HomeScreen() {
             onBlur={() => setSearchFocused(false)}
             autoCapitalize="none" autoCorrect={false}
             returnKeyType={connected ? 'done' : 'search'} keyboardType="url"
-            onSubmitEditing={() => connected ? addDirect(domain) : checkDomain()}
+            onSubmitEditing={() => connected ? addDirect(domain, 'main') : checkDomain()}
           />
           {domain.length > 0 && (
             <TouchableOpacity onPress={() => { setDomain(''); setResult(null); setSubscribeMsg(''); }} style={{ paddingHorizontal: 8 }} hitSlop={8}>
@@ -442,13 +484,13 @@ export default function HomeScreen() {
           )}
         </View>
         <TouchableOpacity
-          style={[s.actionBtn, { backgroundColor: c.accent }]}
-          onPress={() => connected ? addDirect(domain) : checkDomain()}
+          style={[s.actionBtn, { backgroundColor: addedMain ? c.success : c.accent }]}
+          onPress={() => connected ? addDirect(domain, 'main') : checkDomain()}
           disabled={checking || subscribing}
         >
           {(checking || subscribing)
             ? <ActivityIndicator color="#fff" size="small" />
-            : <Ionicons name={connected ? 'add' : 'search'} size={connected ? 26 : 20} color="#fff" />}
+            : <Ionicons name={addedMain ? 'checkmark' : (connected ? 'add' : 'search')} size={connected ? 26 : 20} color="#fff" />}
         </TouchableOpacity>
       </View>
 
@@ -464,16 +506,21 @@ export default function HomeScreen() {
             </View>
           ) : null}
           <View style={s.suggestionsWrap}>
-            {suggestions.map(d => (
-              <TouchableOpacity
-                key={d}
-                style={[s.suggestionChip, { backgroundColor: c.surface2, borderColor: c.borderMd }]}
-                onPress={() => { connected ? addDirect(d) : (setDomain(d), checkDomain(d)); }}
-              >
-                <Text style={[s.suggestionText, { color: c.textMuted }]}>{d}</Text>
-                <View style={[s.suggestionPlus, { backgroundColor: c.accent }]}><Text style={s.suggestionPlusText}>+</Text></View>
-              </TouchableOpacity>
-            ))}
+            {suggestions.map(d => {
+              const added = addedChip === d;
+              return (
+                <TouchableOpacity
+                  key={d}
+                  style={[s.suggestionChip, { backgroundColor: added ? c.successDim : c.surface2, borderColor: added ? c.successBorder : c.borderMd }]}
+                  onPress={() => { connected ? addDirect(d, d) : (setDomain(d), checkDomain(d)); }}
+                >
+                  <Text style={[s.suggestionText, { color: added ? c.success : c.textMuted }]}>{d}</Text>
+                  <View style={[s.suggestionPlus, { backgroundColor: added ? c.success : c.accent }]}>
+                    {added ? <Ionicons name="checkmark" size={12} color="#fff" /> : <Text style={s.suggestionPlusText}>+</Text>}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </ScrollView>
       ) : (
@@ -704,8 +751,9 @@ const s = StyleSheet.create({
   availBadge: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 1 },
   availBadgeText: { fontSize: 10, fontWeight: '600' },
 
-  swipeAction: { justifyContent: 'center', paddingHorizontal: 20, borderRadius: Radius.lg, marginVertical: 0, width: 130, gap: 3 },
-  swipeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  rowWrap: { borderRadius: Radius.lg, overflow: 'hidden' },
+  actionLayer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 22, borderRadius: Radius.lg },
+  actionText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   pageHint: { textAlign: 'center', fontSize: 11, paddingVertical: 8 },

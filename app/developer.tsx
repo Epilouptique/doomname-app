@@ -4,11 +4,12 @@ import {
   StyleSheet, useColorScheme, ActivityIndicator, ScrollView, Linking
 } from 'react-native';
 import { useColors, Radius } from '../constants/theme';
+import { useTheme } from '../lib/theme';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 
 export default function DeveloperScreen() {
-  const dark = useColorScheme() === 'dark';
+  const { dark } = useTheme();
   const c = useColors(dark);
 
   const [email, setEmail] = useState('');

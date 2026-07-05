@@ -7,11 +7,12 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, Radius } from '../constants/theme';
+import { useTheme } from '../lib/theme';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 
 export default function SettingsScreen() {
-  const dark = useColorScheme() === 'dark';
+  const { dark, setDark } = useTheme();
   const c = useColors(dark);
   const router = useRouter();
 
@@ -131,7 +132,21 @@ export default function SettingsScreen() {
       <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
         <Text style={[s.sectionTitle, { color: c.accent }]}>Général</Text>
 
-        <TouchableOpacity style={s.row} onPress={() => router.push('/developer')}>
+        <View style={s.row}>
+          <View style={s.rowLeft}>
+            <Ionicons name="moon-outline" size={18} color={c.textMuted} />
+            <Text style={[s.rowLabel, { color: c.text }]}>Mode sombre</Text>
+          </View>
+          <Switch
+            value={dark}
+            onValueChange={setDark}
+            trackColor={{ false: c.borderMd, true: c.accent }}
+            thumbColor="#fff"
+            ios_backgroundColor={c.borderMd}
+          />
+        </View>
+
+        <TouchableOpacity style={[s.row, { borderTopColor: c.border, borderTopWidth: 1 }]} onPress={() => router.push('/developer')}>
           <View style={s.rowLeft}>
             <Ionicons name="code-slash-outline" size={18} color={c.textMuted} />
             <Text style={[s.rowLabel, { color: c.text }]}>API développeurs</Text>
