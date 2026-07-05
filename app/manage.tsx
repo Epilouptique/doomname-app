@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -33,15 +33,30 @@ export default function ManageScreen() {
   const PAGE_SIZE = 20;
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'available'>('all');
   const [highlight, setHighlight] = useState<Record<number, 'green' | 'red'>>({});
+  // Domaine à mettre en évidence au prochain chargement de la liste (tap notif,
+  // notif reçue au 1er plan, ou ajout). Consommé une fois par computeHighlights.
+  const pendingFlashRef = useRef<{ domain: string; color: 'green' | 'red' } | null>(null);
 
-  // Filtre transmis par le tap sur une notification push (ex. ?filter=available).
-  const params = useLocalSearchParams<{ filter?: string }>();
+  // Paramètres transmis par le tap sur une notification push :
+  // filter (onglet à activer), flash (domaine à mettre en évidence), flashType.
+  const params = useLocalSearchParams<{ filter?: string; flash?: string; flashType?: string }>();
   useEffect(() => {
     if (params.filter === 'available' || params.filter === 'active' || params.filter === 'inactive' || params.filter === 'all') {
       setFilter(params.filter);
       setPage(1);
     }
   }, [params.filter]);
+
+  // Flash ciblé demandé par le tap sur une notification (domaine + type).
+  useEffect(() => {
+    if (params.flash) {
+      pendingFlashRef.current = {
+        domain: String(params.flash),
+        color: params.flashType === 'domain_taken' ? 'red' : 'green',
+      };
+      AsyncStorage.getItem('doomname_email').then(mail => { if (mail) loadSubs(mail); });
+    }
+  }, [params.flash, params.flashType]);
 
   useEffect(() => {
     AsyncStorage.getItem('doomname_email').then(saved => {
@@ -61,9 +76,14 @@ export default function ManageScreen() {
     }, [userEmail])
   );
 
-  // Rafraîchit aussi si une notification arrive pendant que l'app est ouverte.
+  // Rafraîchit aussi si une notification arrive pendant que l'app est ouverte,
+  // et cible le flash sur le domaine concerné.
   useEffect(() => {
-    const sub = Notifications.addNotificationReceivedListener(() => {
+    const sub = Notifications.addNotificationReceivedListener(notif => {
+      const data = notif.request?.content?.data as { domain?: string; type?: string } | undefined;
+      if (data?.domain) {
+        pendingFlashRef.current = { domain: String(data.domain), color: data.type === 'domain_taken' ? 'red' : 'green' };
+      }
       AsyncStorage.getItem('doomname_email').then(mail => { if (mail) loadSubs(mail); });
     });
     return () => sub.remove();
@@ -153,38 +173,26 @@ export default function ManageScreen() {
     }
   };
 
-  // Met en évidence les domaines dont le statut a changé il y a moins de 10 min :
-  // vert = devenu disponible, rouge = repris (taken). Chaque changement n'est mis
-  // en évidence qu'UNE fois par appareil (mémorisé dans AsyncStorage via une clé
-  // id:notified_at), puis la surbrillance s'efface après quelques secondes.
+  // Met en évidence UNIQUEMENT le domaine ciblé (tap notif / notif reçue / ajout),
+  // jamais tous les domaines visibles. La cible est portée par pendingFlashRef et
+  // consommée ici. Dédup via AsyncStorage (clé id:notified_at) pour ne flasher
+  // qu'une fois par évènement, puis la surbrillance s'efface après quelques secondes.
   const computeHighlights = async (data: any[]) => {
-    const RECENT_MS = 10 * 60 * 1000;
-    const now = Date.now();
-    const candidates = data.filter((s: any) =>
-      s.notified_at &&
-      (now - new Date(s.notified_at).getTime() < RECENT_MS) &&
-      (s.last_status === 'available' || s.last_status === 'taken')
-    );
-    if (candidates.length === 0) return;
+    const target = pendingFlashRef.current;
+    pendingFlashRef.current = null;
+    if (!target) return;
 
+    const sub = data.find((s: any) => s.domain === target.domain);
+    if (!sub) return;
+
+    const key = `${sub.id}:${sub.notified_at ? new Date(sub.notified_at).getTime() : 'na'}`;
     let flashed: string[] = [];
     try { flashed = JSON.parse((await AsyncStorage.getItem('doomname_flashed')) || '[]'); } catch { flashed = []; }
-    const flashedSet = new Set(flashed);
+    if (flashed.includes(key)) return;
 
-    const map: Record<number, 'green' | 'red'> = {};
-    const newKeys: string[] = [];
-    for (const s of candidates) {
-      const key = `${s.id}:${new Date(s.notified_at).getTime()}`;
-      if (!flashedSet.has(key)) {
-        map[s.id] = s.last_status === 'available' ? 'green' : 'red';
-        newKeys.push(key);
-      }
-    }
-    if (newKeys.length === 0) return;
-
-    setHighlight(map);
+    setHighlight({ [sub.id]: target.color });
     // Conserve les 200 dernières clés pour éviter une croissance illimitée.
-    await AsyncStorage.setItem('doomname_flashed', JSON.stringify([...flashed, ...newKeys].slice(-200)));
+    await AsyncStorage.setItem('doomname_flashed', JSON.stringify([...flashed, key].slice(-200)));
     setTimeout(() => setHighlight({}), 5000);
   };
 
@@ -232,6 +240,11 @@ export default function ManageScreen() {
       const data = await res.json();
       if (data.success) {
         setNewDomain('');
+        // Flash vert ciblé si le domaine ajouté est disponible (le rouge est
+        // réservé à une reprise "repris"). Aucun envoi n'est déclenché à l'ajout.
+        if (data.last_status === 'available') {
+          pendingFlashRef.current = { domain: d, color: 'green' };
+        }
         loadSubs(userEmail);
       } else {
         setError(data.error || 'Erreur lors de l\'ajout.');

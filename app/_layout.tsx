@@ -53,11 +53,17 @@ export default function RootLayout() {
     registerForPushNotificationsAsync().then(() => syncPushToken());
 
     // Ouvre "Mes alertes" quand on tape sur une notification, en appliquant le
-    // filtre transmis dans le payload (ex. filter: 'available').
+    // filtre transmis dans le payload (ex. filter: 'available') et en passant le
+    // domaine concerné + son type pour déclencher le flash ciblé sur cet écran.
     const goToAlerts = (response?: Notifications.NotificationResponse) => {
-      const data = response?.notification?.request?.content?.data as { filter?: string } | undefined;
-      const filter = data?.filter;
-      router.push(filter ? `/manage?filter=${filter}` : '/manage');
+      const data = response?.notification?.request?.content?.data as
+        { filter?: string; domain?: string; type?: string } | undefined;
+      const qs = new URLSearchParams();
+      if (data?.filter) qs.set('filter', data.filter);
+      if (data?.domain) qs.set('flash', data.domain);
+      if (data?.type) qs.set('flashType', data.type); // domain_available | domain_taken
+      const s = qs.toString();
+      router.push(s ? `/manage?${s}` : '/manage');
     };
 
     const sub = Notifications.addNotificationResponseReceivedListener(goToAlerts);
