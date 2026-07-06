@@ -220,28 +220,15 @@ export default function HomeScreen() {
   //     GestureDetector) est repoussé via InteractionManager.runAfterInteractions,
   //     donc APRÈS que le bouton orange + le fondu/spinner sont peints.
   const changeFilter = useCallback((f: 'all' | 'active' | 'inactive' | 'available') => {
-    if (__DEV__) console.time('tap-to-state');
     setUiFilter(f);        // instantané : bouton orange
     setFiltering(true);    // instantané : fondu + spinner
-    if (__DEV__) console.timeLog?.('tap-to-state', 'setState synchrones postés');
     InteractionManager.runAfterInteractions(() => {
-      if (__DEV__) console.timeLog?.('tap-to-state', 'runAfterInteractions → setFilter (render lourd)');
       setVisibleCount(PAGE_SIZE);
       setFilter(f);
       listRef.current?.scrollToOffset({ offset: 0, animated: false });
     });
   }, []);
   const listFadeStyle = useAnimatedStyle(() => ({ opacity: listOpacity.value }));
-
-  // Mesures : 1er render après le tap (bouton orange), puis render de la liste.
-  const didMountFilter = useRef(false);
-  useEffect(() => {
-    if (__DEV__ && didMountFilter.current) console.timeLog?.('tap-to-state', 'render bouton orange COMMITÉ');
-  }, [uiFilter]);
-  useEffect(() => {
-    if (__DEV__ && didMountFilter.current) { console.timeLog?.('tap-to-state', 'render liste COMMITÉ'); console.timeEnd?.('tap-to-state'); }
-    didMountFilter.current = true;
-  }, [filter]);
 
   // Rafraîchit + flash ciblé si une notification arrive au premier plan.
   useEffect(() => {
