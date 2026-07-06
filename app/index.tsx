@@ -27,6 +27,8 @@ const PAGE_SIZE = 20;
 const logoDark = require('../assets/doomname-logo-dark.png');
 const logoLight = require('../assets/doomname-logo-light.png');
 
+const keyExtractor = (item: any) => String(item.id);
+
 // Ligne d'alerte avec swipe progressif (Reanimated) :
 //  • glissé vers la GAUCHE → activer/désactiver ; vers la DROITE → supprimer.
 //  • sous 50% de la largeur : icône seule ; au-dessus : icône + texte.
@@ -139,6 +141,8 @@ export default function HomeScreen() {
   const pendingFlashRef = useRef<{ domain: string; color: 'green' | 'red' } | null>(null);
   const listRef = useRef<FlatList>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE); // scroll infini vertical
+  const [filtering, setFiltering] = useState(false);           // overlay bref au changement de filtre
+  const listOpacity = useSharedValue(1);
 
   // Modale email (abonnement sans compte) et modale connexion
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -172,6 +176,7 @@ export default function HomeScreen() {
   // Filtre transmis par le tap sur une notification.
   useEffect(() => {
     if (['all', 'active', 'inactive', 'available'].includes(params.filter as string)) {
+      setVisibleCount(PAGE_SIZE);
       setFilter(params.filter as any);
       setFilterOpen(true);
     }
@@ -191,12 +196,28 @@ export default function HomeScreen() {
   // Rafraîchit au focus de l'écran.
   useFocusEffect(useCallback(() => { if (userEmail) loadSubs(userEmail); }, [userEmail]));
 
-  // Changement de filtre / recherche : réinitialise la fenêtre de scroll infini
-  // et remonte en haut. Purement en mémoire (aucun appel réseau) → instantané.
+  // Fondu doux de la liste pendant le (bref) recalcul de filtre.
   useEffect(() => {
+    listOpacity.value = withTiming(filtering ? 0.4 : 1, { duration: 150 });
+  }, [filtering]);
+
+  // Filet de sécurité : on retire l'overlay peu après le render (la liste est prête).
+  useEffect(() => {
+    if (!filtering) return;
+    const id = setTimeout(() => setFiltering(false), 220);
+    return () => clearTimeout(id);
+  }, [filtering]);
+
+  // Changement de filtre : reset SYNCHRONE de la fenêtre à 20 items + retour en
+  // haut, dans le même batch que setFilter → le render se fait déjà à 20 items
+  // (plus de render transitoire de tous les items accumulés).
+  const changeFilter = useCallback((f: 'all' | 'active' | 'inactive' | 'available') => {
+    setFiltering(true);
     setVisibleCount(PAGE_SIZE);
+    setFilter(f);
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
-  }, [filter, listSearch]);
+  }, []);
+  const listFadeStyle = useAnimatedStyle(() => ({ opacity: listOpacity.value }));
 
   // Rafraîchit + flash ciblé si une notification arrive au premier plan.
   useEffect(() => {
@@ -536,7 +557,7 @@ export default function HomeScreen() {
                   onPress={() => { connected ? addDirect(d, d) : (setDomain(d), checkDomain(d)); }}
                 >
                   <Text style={[s.suggestionText, { color: done ? c.success : c.textMuted }]}>
-                    {d}{subbed ? `  · ${t('home.already_watched')}` : ''}
+                    {d}
                   </Text>
                   <View style={[s.suggestionPlus, { backgroundColor: done ? c.success : c.accent }]}>
                     {done ? <Ionicons name="checkmark" size={12} color="#fff" /> : <Text style={s.suggestionPlusText}>+</Text>}
@@ -598,7 +619,7 @@ export default function HomeScreen() {
                     {filters.map(f => (
                       <TouchableOpacity
                         key={f}
-                        onPress={() => setFilter(f)}
+                        onPress={() => changeFilter(f)}
                         hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
                         style={[s.filterBtn, { borderColor: filter === f ? c.accent : c.borderMd, backgroundColor: filter === f ? c.accentDim : 'transparent' }]}
                       >
@@ -615,7 +636,7 @@ export default function HomeScreen() {
                       style={[s.inputInner, { color: c.text }]}
                       placeholder={t('home.list_search_placeholder')}
                       placeholderTextColor={c.textDim}
-                      value={listSearch} onChangeText={setListSearch}
+                      value={listSearch} onChangeText={(txt) => { setVisibleCount(PAGE_SIZE); setListSearch(txt); }}
                       autoCapitalize="none" autoCorrect={false} autoFocus
                     />
                     {listSearch.length > 0 && (
@@ -630,22 +651,37 @@ export default function HomeScreen() {
               {loading && filteredSubs.length === 0 ? (
                 <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} />
               ) : (
-                <FlatList
-                  ref={listRef}
-                  data={visibleSubs}
-                  keyExtractor={item => String(item.id)}
-                  renderItem={renderItem}
-                  contentContainerStyle={{ padding: 16, gap: 10, flexGrow: 1 }}
-                  keyboardShouldPersistTaps="handled"
-                  onEndReached={loadMore}
-                  onEndReachedThreshold={0.5}
-                  removeClippedSubviews
-                  refreshControl={
-                    <RefreshControl refreshing={loading} onRefresh={() => userEmail && loadSubs(userEmail)} tintColor={c.accent} colors={[c.accent]} />
-                  }
-                  ListEmptyComponent={<Text style={[s.empty, { color: c.textDim }]}>{t('home.empty')}</Text>}
-                  ListFooterComponent={canLoadMore ? <ActivityIndicator color={c.accent} style={{ marginVertical: 16 }} /> : null}
-                />
+                <View style={{ flex: 1 }}>
+                  <Animated.View style={[{ flex: 1 }, listFadeStyle]}>
+                    <FlatList
+                      ref={listRef}
+                      style={{ flex: 1 }}
+                      data={visibleSubs}
+                      keyExtractor={keyExtractor}
+                      renderItem={renderItem}
+                      contentContainerStyle={{ padding: 16, gap: 10, flexGrow: 1 }}
+                      keyboardShouldPersistTaps="handled"
+                      onEndReached={loadMore}
+                      onEndReachedThreshold={0.5}
+                      removeClippedSubviews
+                      initialNumToRender={10}
+                      maxToRenderPerBatch={10}
+                      windowSize={7}
+                      updateCellsBatchingPeriod={50}
+                      onContentSizeChange={() => { if (filtering) setFiltering(false); }}
+                      refreshControl={
+                        <RefreshControl refreshing={loading} onRefresh={() => userEmail && loadSubs(userEmail)} tintColor={c.accent} colors={[c.accent]} />
+                      }
+                      ListEmptyComponent={<Text style={[s.empty, { color: c.textDim }]}>{t('home.empty')}</Text>}
+                      ListFooterComponent={canLoadMore ? <ActivityIndicator color={c.accent} style={{ marginVertical: 16 }} /> : null}
+                    />
+                  </Animated.View>
+                  {filtering && (
+                    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+                      <ActivityIndicator color={c.accent} />
+                    </View>
+                  )}
+                </View>
               )}
             </>
           ) : (
