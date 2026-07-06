@@ -411,7 +411,10 @@ export default function HomeScreen() {
   const loginWithGitHub = async () => {
     setLoginError(''); setLoginLoading(true);
     try {
-      const result = await WebBrowser.openAuthSessionAsync(`${API_BASE}/api/auth/github?platform=app`, 'doomname://auth');
+      // GitHub via l'origine web (www.doomname.com) : une seule URL de callback à
+      // enregistrer côté GitHub, quel que soit le canal. La DB est partagée avec
+      // le backend Railway, donc le jeton du deep link reste vérifiable via verify.
+      const result = await WebBrowser.openAuthSessionAsync('https://www.doomname.com/api/auth/github?platform=app', 'doomname://auth');
       if (result.type === 'success' && result.url) {
         const m = result.url.match(/[?&]token=([^&]+)/);
         const tok = m ? decodeURIComponent(m[1]) : '';
