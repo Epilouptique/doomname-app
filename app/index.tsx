@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Image,
   StyleSheet, ActivityIndicator,
-  ScrollView, Modal, FlatList, Keyboard, RefreshControl,
+  ScrollView, Modal, FlatList, Keyboard, RefreshControl, InteractionManager,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Notifications from 'expo-notifications';
@@ -134,6 +134,10 @@ export default function HomeScreen() {
   const [subs, setSubs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'available'>('active');
+  // État visuel du bouton actif, découplé de `filter` (qui pilote le render lourd
+  // de la liste) : mis à jour SYNCHRONEMENT au tap → le bouton passe orange en <16ms,
+  // le recalcul de la liste est repoussé après l'interaction (runAfterInteractions).
+  const [uiFilter, setUiFilter] = useState<'all' | 'active' | 'inactive' | 'available'>('active');
   const [filterOpen, setFilterOpen] = useState(false);
   const [listSearchOpen, setListSearchOpen] = useState(false);
   const [listSearch, setListSearch] = useState('');
@@ -177,6 +181,7 @@ export default function HomeScreen() {
   useEffect(() => {
     if (['all', 'active', 'inactive', 'available'].includes(params.filter as string)) {
       setVisibleCount(PAGE_SIZE);
+      setUiFilter(params.filter as any);
       setFilter(params.filter as any);
       setFilterOpen(true);
     }
@@ -208,16 +213,35 @@ export default function HomeScreen() {
     return () => clearTimeout(id);
   }, [filtering]);
 
-  // Changement de filtre : reset SYNCHRONE de la fenêtre à 20 items + retour en
-  // haut, dans le même batch que setFilter → le render se fait déjà à 20 items
-  // (plus de render transitoire de tous les items accumulés).
+  // Changement de filtre — DÉCOUPLAGE feedback / render :
+  //  1) setUiFilter(f) : render TRÈS léger (seuls les 4 boutons changent de style)
+  //     → le bouton passe orange en <16ms, `filter`/la liste ne bougent pas encore.
+  //  2) le travail lourd (setFilter → recompute filteredSubs → montage des lignes
+  //     GestureDetector) est repoussé via InteractionManager.runAfterInteractions,
+  //     donc APRÈS que le bouton orange + le fondu/spinner sont peints.
   const changeFilter = useCallback((f: 'all' | 'active' | 'inactive' | 'available') => {
-    setFiltering(true);
-    setVisibleCount(PAGE_SIZE);
-    setFilter(f);
-    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    if (__DEV__) console.time('tap-to-state');
+    setUiFilter(f);        // instantané : bouton orange
+    setFiltering(true);    // instantané : fondu + spinner
+    if (__DEV__) console.timeLog?.('tap-to-state', 'setState synchrones postés');
+    InteractionManager.runAfterInteractions(() => {
+      if (__DEV__) console.timeLog?.('tap-to-state', 'runAfterInteractions → setFilter (render lourd)');
+      setVisibleCount(PAGE_SIZE);
+      setFilter(f);
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    });
   }, []);
   const listFadeStyle = useAnimatedStyle(() => ({ opacity: listOpacity.value }));
+
+  // Mesures : 1er render après le tap (bouton orange), puis render de la liste.
+  const didMountFilter = useRef(false);
+  useEffect(() => {
+    if (__DEV__ && didMountFilter.current) console.timeLog?.('tap-to-state', 'render bouton orange COMMITÉ');
+  }, [uiFilter]);
+  useEffect(() => {
+    if (__DEV__ && didMountFilter.current) { console.timeLog?.('tap-to-state', 'render liste COMMITÉ'); console.timeEnd?.('tap-to-state'); }
+    didMountFilter.current = true;
+  }, [filter]);
 
   // Rafraîchit + flash ciblé si une notification arrive au premier plan.
   useEffect(() => {
@@ -298,7 +322,7 @@ export default function HomeScreen() {
           setSubscribeMsg(t('home.added_to_list'));
           if (data.last_status === 'available') {
             pendingFlashRef.current = { domain: d, color: 'green' };
-            setFilter('available'); setFilterOpen(true);
+            setUiFilter('available'); setFilter('available'); setFilterOpen(true);
           }
         }
         await AsyncStorage.setItem('doomname_email', email);
@@ -391,7 +415,7 @@ export default function HomeScreen() {
   const logout = async () => {
     await unregisterPushToken();
     await AsyncStorage.removeItem('doomname_email');
-    setUserEmail(''); setSubs([]); setFilter('active'); setFilterOpen(false);
+    setUserEmail(''); setSubs([]); setUiFilter('active'); setFilter('active'); setFilterOpen(false);
   };
 
   // ─── Actions sur un domaine (mémoïsées → pas de re-render des lignes) ────────
@@ -621,9 +645,9 @@ export default function HomeScreen() {
                         key={f}
                         onPress={() => changeFilter(f)}
                         hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                        style={[s.filterBtn, { borderColor: filter === f ? c.accent : c.borderMd, backgroundColor: filter === f ? c.accentDim : 'transparent' }]}
+                        style={[s.filterBtn, { borderColor: uiFilter === f ? c.accent : c.borderMd, backgroundColor: uiFilter === f ? c.accentDim : 'transparent' }]}
                       >
-                        <Text style={[s.filterBtnText, { color: filter === f ? c.accent : c.textMuted }]}>{filterLabel(f)}</Text>
+                        <Text style={[s.filterBtnText, { color: uiFilter === f ? c.accent : c.textMuted }]}>{filterLabel(f)}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
