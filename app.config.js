@@ -50,9 +50,16 @@ module.exports = {
           color: '#d97757',
         },
       ],
+      // Connexion Google native (utilise le compte Google du téléphone).
+      '@react-native-google-signin/google-signin',
+      // Navigateur in-app pour le flux OAuth GitHub (retour via deep link doomname://).
+      'expo-web-browser',
     ],
     extra: {
       apiBase: 'https://domainwatch-production-1943.up.railway.app',
+      // ID client Google OAuth de type "Web" (audience du jeton, non secret).
+      // Défini via la variable d'env GOOGLE_WEB_CLIENT_ID au build EAS.
+      googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID || '',
       router: {},
       eas: {
         projectId: '04249caf-a88f-47d7-bbfe-93df7e3e4390',

@@ -42,7 +42,10 @@ export default {
   },
   login: {
     title: 'Connexion',
-    subtitle: 'Entrez votre email pour recevoir un lien de connexion.',
+    subtitle: 'Connectez-vous avec Google, GitHub ou par lien email.',
+    continue_google: 'Continuer avec Google',
+    continue_github: 'Continuer avec GitHub',
+    or: 'ou',
     send_link: 'Recevoir le lien',
     sent_title: 'Lien envoyé',
     sent_subtitle: 'Ouvrez le lien reçu par email, ou collez le token ci-dessous.',

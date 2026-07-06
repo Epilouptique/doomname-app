@@ -42,7 +42,10 @@ export default {
   },
   login: {
     title: 'Sign in',
-    subtitle: 'Enter your email to receive a sign-in link.',
+    subtitle: 'Sign in with Google, GitHub, or an email link.',
+    continue_google: 'Continue with Google',
+    continue_github: 'Continue with GitHub',
+    or: 'or',
     send_link: 'Send the link',
     sent_title: 'Link sent',
     sent_subtitle: 'Open the link received by email, or paste the token below.',

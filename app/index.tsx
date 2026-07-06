@@ -17,6 +17,9 @@ import { useColors, Radius } from '../constants/theme';
 import { useTheme } from '../lib/theme';
 import { useLang } from '../lib/lang';
 import { syncPushToken, unregisterPushToken } from '../lib/notifications';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import * as WebBrowser from 'expo-web-browser';
+import Constants from 'expo-constants';
 
 const FILTER_ANIM = { entering: FadeIn.duration(160), exiting: FadeOut.duration(140) };
 
@@ -28,6 +31,10 @@ const logoDark = require('../assets/doomname-logo-dark.png');
 const logoLight = require('../assets/doomname-logo-light.png');
 
 const keyExtractor = (item: any) => String(item.id);
+
+// ID client Google de type "Web" (audience du jeton). Défini au build via
+// GOOGLE_WEB_CLIENT_ID → app.config.js → extra.googleWebClientId.
+const GOOGLE_WEB_CLIENT_ID = ((Constants.expoConfig?.extra as any)?.googleWebClientId as string) || '';
 
 // Ligne d'alerte avec swipe progressif (Reanimated) :
 //  • glissé vers la GAUCHE → activer/désactiver ; vers la DROITE → supprimer.
@@ -357,6 +364,67 @@ export default function HomeScreen() {
     if (ok) flashAdded(source, dom);
   };
 
+  // ─── Connexion ─────────────────────────────────────────────────────────────
+  // Finalisation commune à TOUS les canaux (magic link, Google, GitHub) :
+  // l'email vérifié devient l'identité locale, exactement comme le magic link.
+  const completeLogin = async (email: string) => {
+    await AsyncStorage.setItem('doomname_email', email);
+    setUserEmail(email);
+    setLoginOpen(false); setLoginStep('email'); setLoginEmail(''); setLoginToken(''); setLoginError('');
+    syncPushToken(email);
+    loadSubs(email);
+  };
+
+  // Google Sign-In : configuré une fois au montage (compte Google du téléphone).
+  useEffect(() => {
+    if (GOOGLE_WEB_CLIENT_ID) {
+      try { GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID }); } catch {}
+    }
+  }, []);
+
+  const loginWithGoogle = async () => {
+    if (!GOOGLE_WEB_CLIENT_ID) { setLoginError(t('login.err_server')); return; }
+    setLoginError(''); setLoginLoading(true);
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const info = await GoogleSignin.signIn();
+      const idToken = (info as any)?.data?.idToken ?? (info as any)?.idToken;
+      if (!idToken) throw new Error('no-id-token');
+      const res  = await fetch(`${API_BASE}/api/auth/google`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      const data = await res.json();
+      if (data.success) await completeLogin(data.email);
+      else setLoginError(t('login.err_invalid'));
+    } catch (e: any) {
+      if (e?.code === statusCodes.SIGN_IN_CANCELLED || e?.code === statusCodes.IN_PROGRESS) { /* silencieux */ }
+      else setLoginError(t('login.err_server'));
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  // GitHub : flux web (le secret reste côté serveur). Le backend termine en
+  // redirigeant vers doomname://auth?token=… (jeton éphémère) que l'on vérifie
+  // via /api/auth/verify — exactement comme un magic link.
+  const loginWithGitHub = async () => {
+    setLoginError(''); setLoginLoading(true);
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(`${API_BASE}/api/auth/github?platform=app`, 'doomname://auth');
+      if (result.type === 'success' && result.url) {
+        const m = result.url.match(/[?&]token=([^&]+)/);
+        const tok = m ? decodeURIComponent(m[1]) : '';
+        if (tok) { await verifyToken(tok); return; }
+      }
+      if (result.type !== 'cancel' && result.type !== 'dismiss') setLoginError(t('login.err_server'));
+    } catch {
+      setLoginError(t('login.err_server'));
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
   // ─── Connexion (magic link) ────────────────────────────────────────────────
   const requestMagicLink = async () => {
     const e = loginEmail.trim().toLowerCase();
@@ -383,15 +451,8 @@ export default function HomeScreen() {
     try {
       const res = await fetch(`${API_BASE}/api/auth/verify?token=${tok}`);
       const data = await res.json();
-      if (data.success) {
-        await AsyncStorage.setItem('doomname_email', data.email);
-        setUserEmail(data.email);
-        setLoginOpen(false); setLoginStep('email'); setLoginEmail(''); setLoginToken('');
-        syncPushToken(data.email);
-        loadSubs(data.email);
-      } else {
-        setLoginError(t('login.err_invalid'));
-      }
+      if (data.success) await completeLogin(data.email);
+      else setLoginError(t('login.err_invalid'));
     } catch {
       setLoginError(t('login.err_verify'));
     } finally {
@@ -740,6 +801,23 @@ export default function HomeScreen() {
               <>
                 <Text style={[s.modalTitle, { color: c.text }]}>{t('login.title')}</Text>
                 <Text style={[s.modalSub, { color: c.textMuted }]}>{t('login.subtitle')}</Text>
+                {GOOGLE_WEB_CLIENT_ID ? (
+                  <TouchableOpacity onPress={loginWithGoogle} disabled={loginLoading}
+                    style={[s.oauthBtn, { borderColor: c.borderMd, backgroundColor: c.surface2 }]}>
+                    <Ionicons name="logo-google" size={18} color="#DB4437" />
+                    <Text style={[s.oauthBtnText, { color: c.text }]}>{t('login.continue_google')}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity onPress={loginWithGitHub} disabled={loginLoading}
+                  style={[s.oauthBtn, { borderColor: c.borderMd, backgroundColor: c.surface2 }]}>
+                  <Ionicons name="logo-github" size={18} color={c.text} />
+                  <Text style={[s.oauthBtnText, { color: c.text }]}>{t('login.continue_github')}</Text>
+                </TouchableOpacity>
+                <View style={s.oauthSep}>
+                  <View style={[s.oauthSepLine, { backgroundColor: c.borderMd }]} />
+                  <Text style={{ color: c.textDim, fontSize: 12, marginHorizontal: 10, textTransform: 'uppercase' }}>{t('login.or')}</Text>
+                  <View style={[s.oauthSepLine, { backgroundColor: c.borderMd }]} />
+                </View>
                 <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
                   <TextInput
                     style={[s.inputInner, { color: c.text }]}
@@ -834,6 +912,10 @@ const s = StyleSheet.create({
 
   loginBtn: { height: 48, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   loginBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  oauthBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: 48, borderRadius: Radius.md, borderWidth: 1, marginBottom: 10 },
+  oauthBtnText: { fontWeight: '600', fontSize: 15 },
+  oauthSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 6 },
+  oauthSepLine: { flex: 1, height: 1 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalBox: { width: '100%', borderRadius: 14, padding: 24, borderWidth: 1 },
