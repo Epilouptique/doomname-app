@@ -15,6 +15,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColors, Radius } from '../constants/theme';
 import { useTheme } from '../lib/theme';
+import { useLang } from '../lib/lang';
 import { syncPushToken, unregisterPushToken } from '../lib/notifications';
 
 const FILTER_ANIM = { entering: FadeIn.duration(160), exiting: FadeOut.duration(140) };
@@ -38,6 +39,7 @@ const AlertRow = memo(function AlertRow({ item, c, hl, onDelete, onToggle }: {
   onDelete: (id: number, domain: string) => void;
   onToggle: (id: number, active: boolean) => void;
 }) {
+  const { t } = useLang();
   const tx = useSharedValue(0);
   const rowW = useSharedValue(0);
   const bg = hl === 'green' ? c.successDim : hl === 'red' ? c.dangerDim : c.surface;
@@ -76,11 +78,11 @@ const AlertRow = memo(function AlertRow({ item, c, hl, onDelete, onToggle }: {
       {/* Fond action SUPPRIMER (gauche) */}
       <Animated.View style={[StyleSheet.absoluteFill, s.actionLayer, { backgroundColor: c.danger, justifyContent: 'flex-start' }, deleteStyle]}>
         <Ionicons name="trash-outline" size={22} color="#fff" />
-        <Animated.Text style={[s.actionText, deleteTextStyle]}>Supprimer</Animated.Text>
+        <Animated.Text style={[s.actionText, deleteTextStyle]}>{t('swipe.delete')}</Animated.Text>
       </Animated.View>
       {/* Fond action ACTIVER/DÉSACTIVER (droite) */}
       <Animated.View style={[StyleSheet.absoluteFill, s.actionLayer, { backgroundColor: c.accent, justifyContent: 'flex-end' }, toggleStyle]}>
-        <Animated.Text style={[s.actionText, toggleTextStyle]}>{item.active ? 'Désactiver' : 'Activer'}</Animated.Text>
+        <Animated.Text style={[s.actionText, toggleTextStyle]}>{item.active ? t('swipe.disable') : t('swipe.enable')}</Animated.Text>
         <Ionicons name={item.active ? 'pause-outline' : 'play-outline'} size={22} color="#fff" />
       </Animated.View>
 
@@ -91,11 +93,11 @@ const AlertRow = memo(function AlertRow({ item, c, hl, onDelete, onToggle }: {
               <Text style={[s.domain, { color: c.text }]}>{item.domain}</Text>
               {isAvailable && (
                 <View style={[s.availBadge, { backgroundColor: c.successDim, borderColor: c.successBorder }]}>
-                  <Text style={[s.availBadgeText, { color: c.success }]}>Disponible</Text>
+                  <Text style={[s.availBadgeText, { color: c.success }]}>{t('home.available')}</Text>
                 </View>
               )}
             </View>
-            <Text style={[s.date, { color: c.textDim }]}>{new Date(item.created_at).toLocaleDateString('fr-FR')}</Text>
+            <Text style={[s.date, { color: c.textDim }]}>{new Date(item.created_at).toLocaleDateString()}</Text>
           </View>
           <View style={[s.statusDot, { backgroundColor: item.active ? c.success : c.textDim }]} />
         </Animated.View>
@@ -106,6 +108,7 @@ const AlertRow = memo(function AlertRow({ item, c, hl, onDelete, onToggle }: {
 
 export default function HomeScreen() {
   const { dark } = useTheme();
+  const { t, lang } = useLang();
   const c = useColors(dark);
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -216,7 +219,7 @@ export default function HomeScreen() {
       setSubs(Array.isArray(data) ? data : []);
       await computeHighlights(Array.isArray(data) ? data : []);
     } catch {
-      setError('Impossible de charger les alertes.');
+      setError(t('home.err_load'));
     } finally {
       setLoading(false);
     }
@@ -253,7 +256,7 @@ export default function HomeScreen() {
         else setShowEmailModal(true);
       }
     } catch {
-      setError('Impossible de contacter le serveur.');
+      setError(t('home.err_server'));
     } finally {
       setChecking(false);
     }
@@ -266,12 +269,12 @@ export default function HomeScreen() {
     try {
       const res = await fetch(`${API_BASE}/api/manage/subscribe`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain: d, email }),
+        body: JSON.stringify({ domain: d, email, lang }),
       });
       const data = await res.json();
       if (data.success) {
         if (!silent) {
-          setSubscribeMsg('✅ Alerte ajoutée à votre liste !');
+          setSubscribeMsg(t('home.added_to_list'));
           if (data.last_status === 'available') {
             pendingFlashRef.current = { domain: d, color: 'green' };
             setFilter('available'); setFilterOpen(true);
@@ -283,10 +286,10 @@ export default function HomeScreen() {
         loadSubs(email);
         return true;
       }
-      if (!silent) setSubscribeMsg(data.error || 'Erreur lors de l\'ajout.');
+      if (!silent) setSubscribeMsg(data.error || t('home.err_add'));
       return false;
     } catch {
-      if (!silent) setSubscribeMsg('Impossible d\'ajouter l\'alerte.');
+      if (!silent) setSubscribeMsg(t('home.err_add_generic'));
       return false;
     } finally {
       if (!silent) setSubscribing(false);
@@ -330,23 +333,23 @@ export default function HomeScreen() {
     try {
       const res = await fetch(`${API_BASE}/api/auth/request`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: e }),
+        body: JSON.stringify({ email: e, lang }),
       });
       if (res.ok) setLoginStep('sent');
-      else setLoginError('Erreur lors de l\'envoi du lien.');
+      else setLoginError(t('login.err_send'));
     } catch {
-      setLoginError('Impossible de contacter le serveur.');
+      setLoginError(t('login.err_server'));
     } finally {
       setLoginLoading(false);
     }
   };
 
   const verifyToken = async (tokenOverride?: string) => {
-    const t = (tokenOverride ?? loginToken).trim();
-    if (!t) return;
+    const tok = (tokenOverride ?? loginToken).trim();
+    if (!tok) return;
     setLoginLoading(true); setLoginError('');
     try {
-      const res = await fetch(`${API_BASE}/api/auth/verify?token=${t}`);
+      const res = await fetch(`${API_BASE}/api/auth/verify?token=${tok}`);
       const data = await res.json();
       if (data.success) {
         await AsyncStorage.setItem('doomname_email', data.email);
@@ -355,10 +358,10 @@ export default function HomeScreen() {
         syncPushToken(data.email);
         loadSubs(data.email);
       } else {
-        setLoginError('Lien invalide ou expiré.');
+        setLoginError(t('login.err_invalid'));
       }
     } catch {
-      setLoginError('Impossible de vérifier le lien.');
+      setLoginError(t('login.err_verify'));
     } finally {
       setLoginLoading(false);
     }
@@ -430,7 +433,7 @@ export default function HomeScreen() {
   const connected = !!userEmail;
 
   const filters: Array<typeof filter> = ['active', 'inactive', 'available', 'all'];
-  const filterLabel = (f: string) => f === 'all' ? 'Tous' : f === 'active' ? 'Actifs' : f === 'inactive' ? 'Désactivés' : 'Disponible';
+  const filterLabel = (f: string) => t(`filters.${f}`);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}>
@@ -473,7 +476,7 @@ export default function HomeScreen() {
           <TextInput
             ref={inputRef}
             style={[s.inputInner, { color: c.text }]}
-            placeholder="exemple.com"
+            placeholder={t('home.search_placeholder')}
             placeholderTextColor={c.textDim}
             value={domain}
             onChangeText={setDomain}
@@ -533,7 +536,7 @@ export default function HomeScreen() {
                   onPress={() => { connected ? addDirect(d, d) : (setDomain(d), checkDomain(d)); }}
                 >
                   <Text style={[s.suggestionText, { color: done ? c.success : c.textMuted }]}>
-                    {d}{subbed ? '  · déjà suivi' : ''}
+                    {d}{subbed ? `  · ${t('home.already_watched')}` : ''}
                   </Text>
                   <View style={[s.suggestionPlus, { backgroundColor: done ? c.success : c.accent }]}>
                     {done ? <Ionicons name="checkmark" size={12} color="#fff" /> : <Text style={s.suggestionPlusText}>+</Text>}
@@ -560,7 +563,7 @@ export default function HomeScreen() {
                     ? { backgroundColor: c.successDim, borderColor: c.successBorder }
                     : { backgroundColor: c.dangerDim, borderColor: c.dangerBorder }]}>
                     <Text style={[s.badgeText, { color: result.available ? c.success : c.danger }]}>
-                      {result.available ? 'Disponible' : 'Enregistré'}
+                      {result.available ? t('home.available') : t('home.registered')}
                     </Text>
                   </View>
                   {result.available && !subscribeMsg.startsWith('✅') && !subscribing && (
@@ -569,7 +572,7 @@ export default function HomeScreen() {
                       onPress={() => { userEmail ? subscribe(domain.trim().toLowerCase(), userEmail) : setShowEmailModal(true); }}
                     >
                       <Ionicons name="notifications-outline" size={16} color={c.accent} style={{ marginRight: 6 }} />
-                      <Text style={[s.watchBtnText, { color: c.accent }]}>Surveiller ce domaine</Text>
+                      <Text style={[s.watchBtnText, { color: c.accent }]}>{t('home.watch_domain')}</Text>
                     </TouchableOpacity>
                   )}
                   {subscribing && <ActivityIndicator color={c.success} style={{ marginTop: 8 }} />}
@@ -610,7 +613,7 @@ export default function HomeScreen() {
                   <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder }]}>
                     <TextInput
                       style={[s.inputInner, { color: c.text }]}
-                      placeholder="Rechercher dans mes alertes…"
+                      placeholder={t('home.list_search_placeholder')}
                       placeholderTextColor={c.textDim}
                       value={listSearch} onChangeText={setListSearch}
                       autoCapitalize="none" autoCorrect={false} autoFocus
@@ -640,7 +643,7 @@ export default function HomeScreen() {
                   refreshControl={
                     <RefreshControl refreshing={loading} onRefresh={() => userEmail && loadSubs(userEmail)} tintColor={c.accent} colors={[c.accent]} />
                   }
-                  ListEmptyComponent={<Text style={[s.empty, { color: c.textDim }]}>Aucune alerte pour ce filtre.</Text>}
+                  ListEmptyComponent={<Text style={[s.empty, { color: c.textDim }]}>{t('home.empty')}</Text>}
                   ListFooterComponent={canLoadMore ? <ActivityIndicator color={c.accent} style={{ marginVertical: 16 }} /> : null}
                 />
               )}
@@ -648,10 +651,10 @@ export default function HomeScreen() {
           ) : (
             <View style={{ padding: 24, alignItems: 'center' }}>
               <Text style={[s.hint, { color: c.textMuted, textAlign: 'center', marginBottom: 16 }]}>
-                Connectez-vous pour retrouver et gérer vos alertes.
+                {t('home.login_hint')}
               </Text>
               <TouchableOpacity style={[s.loginBtn, { backgroundColor: c.accent }]} onPress={() => { setLoginOpen(true); setLoginStep('email'); }}>
-                <Text style={s.loginBtnText}>Se connecter</Text>
+                <Text style={s.loginBtnText}>{t('home.login_cta')}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -662,21 +665,21 @@ export default function HomeScreen() {
       <Modal visible={showEmailModal} transparent animationType="fade">
         <View style={s.modalOverlay}>
           <View style={[s.modalBox, { backgroundColor: c.surface, borderColor: c.border }]}>
-            <Text style={[s.modalTitle, { color: c.text }]}>Votre email</Text>
-            <Text style={[s.modalSub, { color: c.textMuted }]}>Pour être alerté sur ce domaine.</Text>
+            <Text style={[s.modalTitle, { color: c.text }]}>{t('emailModal.title')}</Text>
+            <Text style={[s.modalSub, { color: c.textMuted }]}>{t('emailModal.subtitle')}</Text>
             <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
               <TextInput
                 style={[s.inputInner, { color: c.text }]}
-                placeholder="votre@email.com" placeholderTextColor={c.textDim}
+                placeholder={t('common.email_placeholder')} placeholderTextColor={c.textDim}
                 value={emailInput} onChangeText={setEmailInput}
                 autoCapitalize="none" keyboardType="email-address"
               />
             </View>
             <TouchableOpacity style={[s.loginBtn, { backgroundColor: c.accent }]} onPress={confirmEmail}>
-              <Text style={s.loginBtnText}>Activer l'alerte</Text>
+              <Text style={s.loginBtnText}>{t('emailModal.activate')}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowEmailModal(false)} style={{ marginTop: 12 }}>
-              <Text style={{ color: c.textMuted, textAlign: 'center' }}>Annuler</Text>
+              <Text style={{ color: c.textMuted, textAlign: 'center' }}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -688,40 +691,40 @@ export default function HomeScreen() {
           <View style={[s.modalBox, { backgroundColor: c.surface, borderColor: c.border }]}>
             {loginStep === 'email' ? (
               <>
-                <Text style={[s.modalTitle, { color: c.text }]}>Connexion</Text>
-                <Text style={[s.modalSub, { color: c.textMuted }]}>Entrez votre email pour recevoir un lien de connexion.</Text>
+                <Text style={[s.modalTitle, { color: c.text }]}>{t('login.title')}</Text>
+                <Text style={[s.modalSub, { color: c.textMuted }]}>{t('login.subtitle')}</Text>
                 <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
                   <TextInput
                     style={[s.inputInner, { color: c.text }]}
-                    placeholder="votre@email.com" placeholderTextColor={c.textDim}
+                    placeholder={t('common.email_placeholder')} placeholderTextColor={c.textDim}
                     value={loginEmail} onChangeText={setLoginEmail}
                     autoCapitalize="none" keyboardType="email-address"
                   />
                 </View>
                 <TouchableOpacity style={[s.loginBtn, { backgroundColor: c.accent }]} onPress={requestMagicLink} disabled={loginLoading}>
-                  {loginLoading ? <ActivityIndicator color="#fff" /> : <Text style={s.loginBtnText}>Recevoir le lien</Text>}
+                  {loginLoading ? <ActivityIndicator color="#fff" /> : <Text style={s.loginBtnText}>{t('login.send_link')}</Text>}
                 </TouchableOpacity>
               </>
             ) : (
               <>
-                <Text style={[s.modalTitle, { color: c.text }]}>Lien envoyé</Text>
-                <Text style={[s.modalSub, { color: c.textMuted }]}>Ouvrez le lien reçu par email, ou collez le token ci-dessous.</Text>
+                <Text style={[s.modalTitle, { color: c.text }]}>{t('login.sent_title')}</Text>
+                <Text style={[s.modalSub, { color: c.textMuted }]}>{t('login.sent_subtitle')}</Text>
                 <View style={[s.inputWrapFull, { backgroundColor: c.surface2, borderColor: c.inputBorder, marginBottom: 12 }]}>
                   <TextInput
                     style={[s.inputInner, { color: c.text }]}
-                    placeholder="Token" placeholderTextColor={c.textDim}
+                    placeholder={t('login.token_placeholder')} placeholderTextColor={c.textDim}
                     value={loginToken} onChangeText={setLoginToken}
                     autoCapitalize="none" autoCorrect={false}
                   />
                 </View>
                 <TouchableOpacity style={[s.loginBtn, { backgroundColor: c.accent }]} onPress={() => verifyToken()} disabled={loginLoading}>
-                  {loginLoading ? <ActivityIndicator color="#fff" /> : <Text style={s.loginBtnText}>Valider</Text>}
+                  {loginLoading ? <ActivityIndicator color="#fff" /> : <Text style={s.loginBtnText}>{t('login.validate')}</Text>}
                 </TouchableOpacity>
               </>
             )}
             {loginError ? <Text style={{ color: c.danger, textAlign: 'center', marginTop: 10, fontSize: 13 }}>{loginError}</Text> : null}
             <TouchableOpacity onPress={() => { setLoginOpen(false); setLoginError(''); }} style={{ marginTop: 12 }}>
-              <Text style={{ color: c.textMuted, textAlign: 'center' }}>Fermer</Text>
+              <Text style={{ color: c.textMuted, textAlign: 'center' }}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
         </View>

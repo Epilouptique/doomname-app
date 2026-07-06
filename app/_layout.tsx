@@ -8,20 +8,24 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import { useColors } from '../constants/theme';
 import { ThemeProvider, useTheme } from '../lib/theme';
+import { LanguageProvider, useLang } from '../lib/lang';
 import { registerForPushNotificationsAsync, syncPushToken } from '../lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <RootLayoutInner />
-    </ThemeProvider>
+    <LanguageProvider>
+      <ThemeProvider>
+        <RootLayoutInner />
+      </ThemeProvider>
+    </LanguageProvider>
   );
 }
 
 function RootLayoutInner() {
   const { dark } = useTheme();
+  const { t } = useLang();
   const c = useColors(dark);
   const router = useRouter();
 
@@ -115,8 +119,8 @@ function RootLayoutInner() {
         <Stack.Screen name="manage" />
         {/* Flèche retour native (←) + titre "DoomName" (remplace le logo, 4e). */}
         <Stack.Screen name="settings" options={{ headerShown: true, title: 'DoomName' }} />
-        <Stack.Screen name="developer" options={{ headerShown: true, title: 'API développeurs' }} />
-        <Stack.Screen name="cgv" options={{ headerShown: true, title: 'CGV' }} />
+        <Stack.Screen name="developer" options={{ headerShown: true, title: t('settings.api_devs') }} />
+        <Stack.Screen name="cgv" options={{ headerShown: true, title: t('settings.cgv') }} />
       </Stack>
     </GestureHandlerRootView>
   );

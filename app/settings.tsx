@@ -8,11 +8,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, Radius } from '../constants/theme';
 import { useTheme } from '../lib/theme';
+import { useLang } from '../lib/lang';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 
 export default function SettingsScreen() {
   const { dark, setDark } = useTheme();
+  const { t, lang, setLang } = useLang();
   const c = useColors(dark);
   const router = useRouter();
 
@@ -54,11 +56,11 @@ export default function SettingsScreen() {
     const e = deleteEmail.trim().toLowerCase();
     if (!e) return;
     Alert.alert(
-      'Supprimer mon compte',
-      `Confirmez-vous vouloir supprimer définitivement le compte associé à ${e} ? Cette action est irréversible.`,
+      t('settings.delete_confirm_title'),
+      t('settings.delete_confirm_msg', { email: e }),
       [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Supprimer', style: 'destructive', onPress: () => doRequestDeletion(e) },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('settings.delete_action'), style: 'destructive', onPress: () => doRequestDeletion(e) },
       ]
     );
   };
@@ -75,13 +77,13 @@ export default function SettingsScreen() {
       });
       const data = await res.json();
       if (data.success) {
-        setDeleteMsg('Vérifiez votre boîte mail pour confirmer la suppression de votre compte.');
+        setDeleteMsg(t('settings.delete_sent'));
         setDeleteEmail('');
       } else {
-        setDeleteErr(data.error || 'Erreur lors de la demande.');
+        setDeleteErr(data.error || t('settings.delete_err'));
       }
     } catch {
-      setDeleteErr('Impossible de contacter le serveur.');
+      setDeleteErr(t('settings.delete_err_server'));
     } finally {
       setDeleting(false);
     }
@@ -91,16 +93,15 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={s.container}>
-     
 
       <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
-        <Text style={[s.sectionTitle, { color: c.accent }]}>Alertes</Text>
+        <Text style={[s.sectionTitle, { color: c.accent }]}>{t('settings.section_alerts')}</Text>
         {userEmail ? (
           <>
             <View style={s.row}>
               <View style={{ flex: 1 }}>
-                <Text style={[s.rowLabel, { color: c.text }]}>Alertes e-mail</Text>
-                <Text style={[s.rowDesc, { color: c.textDim }]}>Domaine surveillé devenu disponible</Text>
+                <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.email_alerts')}</Text>
+                <Text style={[s.rowDesc, { color: c.textDim }]}>{t('settings.email_alerts_desc')}</Text>
               </View>
               <Switch
                 value={emailAlertsEnabled}
@@ -112,8 +113,8 @@ export default function SettingsScreen() {
             </View>
             <View style={[s.row, { borderTopColor: c.border, borderTopWidth: 1 }]}>
               <View style={{ flex: 1 }}>
-                <Text style={[s.rowLabel, { color: c.text }]}>Période de grâce</Text>
-                <Text style={[s.rowDesc, { color: c.textDim }]}>Grâce, rédemption ou suppression</Text>
+                <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.grace')}</Text>
+                <Text style={[s.rowDesc, { color: c.textDim }]}>{t('settings.grace_desc')}</Text>
               </View>
               <Switch
                 value={graceAlertsEnabled}
@@ -125,17 +126,17 @@ export default function SettingsScreen() {
             </View>
           </>
         ) : (
-          <Text style={[s.info, { color: c.textMuted }]}>Connectez-vous depuis l'écran principal pour gérer vos préférences.</Text>
+          <Text style={[s.info, { color: c.textMuted }]}>{t('settings.not_connected')}</Text>
         )}
       </View>
 
       <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
-        <Text style={[s.sectionTitle, { color: c.accent }]}>Général</Text>
+        <Text style={[s.sectionTitle, { color: c.accent }]}>{t('settings.section_general')}</Text>
 
         <View style={s.row}>
           <View style={s.rowLeft}>
             <Ionicons name="moon-outline" size={18} color={c.textMuted} />
-            <Text style={[s.rowLabel, { color: c.text }]}>Mode sombre</Text>
+            <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.dark_mode')}</Text>
           </View>
           <Switch
             value={dark}
@@ -146,10 +147,28 @@ export default function SettingsScreen() {
           />
         </View>
 
+        <View style={[s.row, { borderTopColor: c.border, borderTopWidth: 1 }]}>
+          <View style={s.rowLeft}>
+            <Ionicons name="language-outline" size={18} color={c.textMuted} />
+            <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.language')}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {(['fr', 'en'] as const).map(L => (
+              <TouchableOpacity
+                key={L}
+                onPress={() => setLang(L)}
+                style={[s.langBtn, { borderColor: lang === L ? c.accent : c.borderMd, backgroundColor: lang === L ? c.accentDim : 'transparent' }]}
+              >
+                <Text style={{ color: lang === L ? c.accent : c.textMuted, fontSize: 12, fontWeight: '600' }}>{L.toUpperCase()}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         <TouchableOpacity style={[s.row, { borderTopColor: c.border, borderTopWidth: 1 }]} onPress={() => router.push('/developer')}>
           <View style={s.rowLeft}>
             <Ionicons name="code-slash-outline" size={18} color={c.textMuted} />
-            <Text style={[s.rowLabel, { color: c.text }]}>API développeurs</Text>
+            <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.api_devs')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={c.textDim} />
         </TouchableOpacity>
@@ -157,25 +176,23 @@ export default function SettingsScreen() {
         <TouchableOpacity style={[s.row, { borderTopColor: c.border, borderTopWidth: 1 }]} onPress={() => router.push('/cgv')}>
           <View style={s.rowLeft}>
             <Ionicons name="document-text-outline" size={18} color={c.textMuted} />
-            <Text style={[s.rowLabel, { color: c.text }]}>Conditions d'utilisation (CGV)</Text>
+            <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.cgv')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={c.textDim} />
         </TouchableOpacity>
       </View>
 
       <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
-        <Text style={[s.sectionTitle, { color: c.danger }]}>Supprimer mon compte</Text>
-        <Text style={[s.info, { color: c.textMuted, marginBottom: 12 }]}>
-          Supprime définitivement toutes les surveillances de domaines, clés API et préférences associées à votre adresse e-mail. Un e-mail de confirmation vous sera envoyé.
-        </Text>
+        <Text style={[s.sectionTitle, { color: c.danger }]}>{t('settings.section_delete')}</Text>
+        <Text style={[s.info, { color: c.textMuted, marginBottom: 12 }]}>{t('settings.delete_desc')}</Text>
         <TextInput
-          style={inputStyle} placeholder="votre@email.com"
+          style={inputStyle} placeholder={t('common.email_placeholder')}
           placeholderTextColor={c.textDim}
           value={deleteEmail} onChangeText={setDeleteEmail}
           autoCapitalize="none" keyboardType="email-address"
         />
         <TouchableOpacity style={[s.button, { backgroundColor: c.danger }]} onPress={requestDeletion} disabled={deleting}>
-          {deleting ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Supprimer mon compte</Text>}
+          {deleting ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>{t('settings.delete_btn')}</Text>}
         </TouchableOpacity>
         {deleteMsg ? (
           <View style={[s.feedbackBox, { backgroundColor: c.successDim, borderColor: c.successBorder }]}>
@@ -190,7 +207,7 @@ export default function SettingsScreen() {
       </View>
 
       <Text style={[s.footer, { color: c.textMuted }]}>
-        Application réalisée par{' '}
+        {t('settings.made_by')}{' '}
         <Text style={{ color: c.accent }} onPress={() => Linking.openURL('https://dahu-concept.fr')}>
           Dahu-Concept
         </Text>
@@ -217,6 +234,7 @@ const s = StyleSheet.create({
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowLabel: { fontSize: 14, fontWeight: '500' },
   rowDesc: { fontSize: 11, marginTop: 2 },
+  langBtn: { borderWidth: 1, borderRadius: 8, paddingVertical: 5, paddingHorizontal: 12 },
   input: {
     height: 48, borderRadius: Radius.md, paddingHorizontal: 14, marginBottom: 10,
     fontSize: 15,
