@@ -7,7 +7,7 @@ module.exports = () => {
   expo: {
     name: 'DoomName',
     slug: 'doomname',
-    version: '1.0.0',
+    version: '1.1.0',
     orientation: 'portrait',
     icon: './assets/doomname-logo-light-512.png',
     scheme: 'doomname',
@@ -29,6 +29,10 @@ module.exports = () => {
     android: {
       package: 'fr.dahuconcept.doomname',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
+      // On n'utilise ni pub ni tracking : on bloque l'ID publicitaire que le SDK
+      // FCM (play-services-measurement) ajoute par défaut. Évite aussi une
+      // déclaration "publicité" dans le formulaire Data safety du Play Store.
+      blockedPermissions: ['com.google.android.gms.permission.AD_ID'],
       adaptiveIcon: {
         foregroundImage: './assets/doomname-logo-light-512.png',
         backgroundColor: '#d97757',
