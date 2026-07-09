@@ -3,9 +3,6 @@
 // Un objet statique lirait process.env une seule fois au require() du module,
 // potentiellement avant l'injection → extra.googleWebClientId vide.
 module.exports = () => {
-  // Log visible dans les LOGS DU BUILD EAS (pas Metro) : confirme si la variable
-  // arrive jusqu'ici. À retirer une fois le diagnostic terminé.
-  console.log('[app.config] GOOGLE_WEB_CLIENT_ID =', JSON.stringify(process.env.GOOGLE_WEB_CLIENT_ID || null));
   return {
   expo: {
     name: 'DoomName',
@@ -42,6 +39,7 @@ module.exports = () => {
     },
     plugins: [
       'expo-router',
+      'expo-font',
       [
         'expo-splash-screen',
         {
