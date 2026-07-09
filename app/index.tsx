@@ -34,7 +34,15 @@ const keyExtractor = (item: any) => String(item.id);
 
 // ID client Google de type "Web" (audience du jeton). Défini au build via
 // GOOGLE_WEB_CLIENT_ID → app.config.js → extra.googleWebClientId.
-const GOOGLE_WEB_CLIENT_ID = ((Constants.expoConfig?.extra as any)?.googleWebClientId as string) || '';
+// On lit plusieurs emplacements possibles selon le canal (expoConfig au runtime,
+// manifest2 en OTA) + process.env en dernier recours (dev).
+const GOOGLE_WEB_CLIENT_ID: string = (
+  (Constants.expoConfig?.extra as any)?.googleWebClientId ||
+  ((Constants as any).manifest2?.extra?.expoClient?.extra?.googleWebClientId) ||
+  ((Constants as any).manifest?.extra?.googleWebClientId) ||
+  process.env.GOOGLE_WEB_CLIENT_ID ||
+  ''
+);
 
 // Ligne d'alerte avec swipe progressif (Reanimated) :
 //  • glissé vers la GAUCHE → activer/désactiver ; vers la DROITE → supprimer.
@@ -377,8 +385,20 @@ export default function HomeScreen() {
 
   // Google Sign-In : configuré une fois au montage (compte Google du téléphone).
   useEffect(() => {
-    if (GOOGLE_WEB_CLIENT_ID) {
-      try { GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID }); } catch {}
+    if (!GOOGLE_WEB_CLIENT_ID) {
+      console.warn(
+        '[Google Sign-In] webClientId INTROUVABLE au runtime → bouton masqué. ' +
+        'Vérifie que la variable EAS GOOGLE_WEB_CLIENT_ID (type plaintext, pas secret) ' +
+        'est bien définie pour ce profil de build et exposée via app.config.js (extra.googleWebClientId). ' +
+        'extra reçu = ' + JSON.stringify(Constants.expoConfig?.extra ?? null)
+      );
+      return;
+    }
+    try {
+      GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
+      console.log('[Google Sign-In] configuré OK avec webClientId =', GOOGLE_WEB_CLIENT_ID);
+    } catch (e: any) {
+      console.warn('[Google Sign-In] échec de GoogleSignin.configure():', e?.message || e);
     }
   }, []);
 
