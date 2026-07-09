@@ -1,4 +1,12 @@
-module.exports = {
+// Forme FONCTION (et non objet statique) : Expo l'évalue au moment de la
+// résolution de la config, quand les variables d'env EAS sont injectées.
+// Un objet statique lirait process.env une seule fois au require() du module,
+// potentiellement avant l'injection → extra.googleWebClientId vide.
+module.exports = () => {
+  // Log visible dans les LOGS DU BUILD EAS (pas Metro) : confirme si la variable
+  // arrive jusqu'ici. À retirer une fois le diagnostic terminé.
+  console.log('[app.config] GOOGLE_WEB_CLIENT_ID =', JSON.stringify(process.env.GOOGLE_WEB_CLIENT_ID || null));
+  return {
   expo: {
     name: 'DoomName',
     slug: 'doomname',
@@ -66,4 +74,5 @@ module.exports = {
       },
     },
   },
+  };
 };
