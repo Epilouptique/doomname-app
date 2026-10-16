@@ -52,6 +52,17 @@ export default function SettingsScreen() {
     } catch { /* la prochaine ouverture rechargera l'état réel */ }
   };
 
+  const openFeedbackMail = async () => {
+    const url = 'mailto:contact@dahu-concept.fr?subject=DoomName%20-%20Retour&body=Type%20de%20retour%20(bug%20/%20id%C3%A9e)%20:%0A%0ADescription%20:%0A';
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) throw new Error('unsupported');
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert(t('settings.feedback_no_mail_title'), t('settings.feedback_no_mail_msg'));
+    }
+  };
+
   const requestDeletion = () => {
     const e = deleteEmail.trim().toLowerCase();
     if (!e) return;
@@ -177,6 +188,14 @@ export default function SettingsScreen() {
           <View style={s.rowLeft}>
             <Ionicons name="document-text-outline" size={18} color={c.textMuted} />
             <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.cgv')}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={c.textDim} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[s.row, { borderTopColor: c.border, borderTopWidth: 1 }]} onPress={openFeedbackMail}>
+          <View style={s.rowLeft}>
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color={c.textMuted} />
+            <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.feedback')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={c.textDim} />
         </TouchableOpacity>
