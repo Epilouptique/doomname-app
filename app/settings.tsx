@@ -9,6 +9,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, Radius } from '../constants/theme';
 import { useTheme } from '../lib/theme';
 import { useLang } from '../lib/lang';
+import { PAYPAL_URL, KOFI_URL } from '../constants/support';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 
@@ -61,6 +62,11 @@ export default function SettingsScreen() {
     } catch {
       Alert.alert(t('settings.feedback_no_mail_title'), t('settings.feedback_no_mail_msg'));
     }
+  };
+
+  // Lien externe → navigateur système (pas de WebView, pas de paiement in-app).
+  const openExternal = (url: string) => {
+    if (url) Linking.openURL(url).catch(() => {});
   };
 
   const requestDeletion = () => {
@@ -198,6 +204,33 @@ export default function SettingsScreen() {
             <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.feedback')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={c.textDim} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
+        <Text style={[s.sectionTitle, { color: c.accent }]}>{t('settings.section_support')}</Text>
+        <Text style={[s.info, { color: c.textMuted, marginBottom: 4 }]}>{t('settings.support_desc')}</Text>
+
+        <TouchableOpacity style={s.row} onPress={() => openExternal(PAYPAL_URL)}>
+          <View style={s.rowLeft}>
+            <Ionicons name="heart-outline" size={18} color={c.textMuted} />
+            <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.support_paypal')}</Text>
+          </View>
+          <Ionicons name="open-outline" size={18} color={c.textDim} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[s.row, { borderTopColor: c.border, borderTopWidth: 1, opacity: KOFI_URL ? 1 : 0.45 }]}
+          onPress={() => openExternal(KOFI_URL)}
+          disabled={!KOFI_URL}
+        >
+          <View style={s.rowLeft}>
+            <Ionicons name="cafe-outline" size={18} color={c.textMuted} />
+            <Text style={[s.rowLabel, { color: c.text }]}>{t('settings.support_kofi')}</Text>
+          </View>
+          {KOFI_URL
+            ? <Ionicons name="open-outline" size={18} color={c.textDim} />
+            : <Text style={{ color: c.textDim, fontSize: 12 }}>{t('settings.support_soon')}</Text>}
         </TouchableOpacity>
       </View>
 
