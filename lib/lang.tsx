@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { i18n, deviceLang, type Lang } from './i18n';
+import { apiFetch } from './api';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 const STORAGE_KEY = 'doomname_lang';
@@ -13,7 +14,7 @@ async function syncLangToBackend(lang: Lang) {
   try {
     const email = await AsyncStorage.getItem('doomname_email');
     if (!email) return;
-    await fetch(`${API_BASE}/api/manage/lang`, {
+    await apiFetch(`${API_BASE}/api/manage/lang`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, lang }),

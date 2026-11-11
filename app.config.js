@@ -22,8 +22,10 @@ module.exports = () => {
     ios: {
       supportsTablet: false,
       bundleIdentifier: 'fr.dahuconcept.doomname',
+      usesAppleSignIn: true,
       infoPlist: {
-        UIBackgroundModes: ['remote-notification'],
+        ITSAppUsesNonExemptEncryption: false,
+        CFBundleDisplayName: 'DoomName',
       },
     },
     android: {
@@ -51,6 +53,14 @@ module.exports = () => {
           imageWidth: 200,
           resizeMode: 'contain',
           backgroundColor: '#f0ede8',
+          // Fond = couleur exacte du carré de l'icône sombre (#1a1a2e) :
+          // l'icône se fond dans le splash, sans bord visible.
+          dark: {
+            image: './assets/doomname-logo-dark.png',
+            imageWidth: 200,
+            resizeMode: 'contain',
+            backgroundColor: '#1a1a2e',
+          },
         },
       ],
       [
@@ -64,12 +74,16 @@ module.exports = () => {
       '@react-native-google-signin/google-signin',
       // Navigateur in-app pour le flux OAuth GitHub (retour via deep link doomname://).
       'expo-web-browser',
+      'expo-apple-authentication',
     ],
     extra: {
       apiBase: 'https://domainwatch-production-1943.up.railway.app',
       // ID client Google OAuth de type "Web" (audience du jeton, non secret).
       // Défini via la variable d'env GOOGLE_WEB_CLIENT_ID au build EAS.
       googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID || '',
+      // Sign in with Apple : code livré inactif, activé par la variable d'env EAS
+      // APPLE_SIGNIN_ENABLED=1 une fois les identifiants Apple prêts.
+      appleSignInEnabled: process.env.APPLE_SIGNIN_ENABLED === '1',
       router: {},
       eas: {
         projectId: '04249caf-a88f-47d7-bbfe-93df7e3e4390',
