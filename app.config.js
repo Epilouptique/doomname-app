@@ -75,6 +75,19 @@ module.exports = () => {
       // Navigateur in-app pour le flux OAuth GitHub (retour via deep link doomname://).
       'expo-web-browser',
       'expo-apple-authentication',
+      // GoogleSignIn 9.x (via @react-native-google-signin) tire des pods Swift
+      // (AppCheckCore) dépendant de pods ObjC sans module : modular headers
+      // ciblés sur ces seuls pods, sans version (dépendances transitives).
+      // Pas de useFrameworks ni de use_modular_headers! global.
+      ['expo-build-properties', {
+        ios: {
+          extraPods: [
+            { name: 'GoogleUtilities', modular_headers: true },
+            { name: 'RecaptchaInterop', modular_headers: true },
+            { name: 'AppCheckCore', modular_headers: true },
+          ],
+        },
+      }],
     ],
     extra: {
       apiBase: 'https://domainwatch-production-1943.up.railway.app',
