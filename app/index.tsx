@@ -933,7 +933,14 @@ export default function HomeScreen() {
                     {t('login.apple_share_hint')}
                   </Text>
                 ) : null}
-                {GOOGLE_WEB_CLIENT_ID ? (
+                {/* Google masqué sur iOS : non configuré (bouton non fonctionnel = rejet
+                    App Store, guideline 2.1). Pour le réactiver : créer un client OAuth
+                    iOS (bundle fr.dahuconcept.doomname) dans Google Cloud Console, puis
+                    renseigner iosUrlScheme dans la config du plugin
+                    @react-native-google-signin/google-signin (app.config.js) et
+                    iosClientId dans GoogleSignin.configure() ; enfin GOOGLE_CLIENT_ID_IOS
+                    côté backend. Retirer alors la condition Platform.OS. */}
+                {GOOGLE_WEB_CLIENT_ID && Platform.OS !== 'ios' ? (
                   <TouchableOpacity onPress={loginWithGoogle} disabled={loginLoading}
                     style={[s.oauthBtn, { borderColor: c.borderMd, backgroundColor: c.surface2 }]}>
                     <Ionicons name="logo-google" size={18} color="#DB4437" />
