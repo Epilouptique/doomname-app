@@ -3,6 +3,7 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { apiFetch } from './api';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 const PUSH_TOKEN_KEY = 'doomname_push_token';
@@ -73,7 +74,7 @@ export async function syncPushToken(email?: string): Promise<void> {
   if (!token) return;
 
   try {
-    await fetch(`${API_BASE}/api/manage/push-token`, {
+    await apiFetch(`${API_BASE}/api/manage/push-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: mail, token, platform: Platform.OS }),
@@ -92,7 +93,7 @@ export async function unregisterPushToken(): Promise<void> {
   const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
   if (!token) return;
   try {
-    await fetch(`${API_BASE}/api/manage/push-token`, {
+    await apiFetch(`${API_BASE}/api/manage/push-token`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),

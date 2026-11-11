@@ -10,6 +10,7 @@ import { useColors, Radius } from '../constants/theme';
 import { useTheme } from '../lib/theme';
 import { useLang } from '../lib/lang';
 import { PAYPAL_URL, KOFI_URL } from '../constants/support';
+import { apiFetch } from '../lib/api';
 
 const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 
@@ -34,7 +35,7 @@ export default function SettingsScreen() {
     AsyncStorage.getItem('doomname_email').then(saved => {
       if (saved) {
         setUserEmail(saved);
-        fetch(`${API_BASE}/api/manage/settings?email=${encodeURIComponent(saved)}`)
+        apiFetch(`${API_BASE}/api/manage/settings?email=${encodeURIComponent(saved)}`)
           .then(res => res.json())
           .then(data => {
             setEmailAlertsEnabled(data.email_alerts_enabled !== false);
@@ -47,7 +48,7 @@ export default function SettingsScreen() {
 
   const updateSettings = async (next: { email_alerts_enabled?: boolean; grace_alerts_enabled?: boolean }) => {
     try {
-      await fetch(`${API_BASE}/api/manage/settings`, {
+      await apiFetch(`${API_BASE}/api/manage/settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: userEmail, ...next })

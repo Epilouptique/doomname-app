@@ -18,6 +18,7 @@ import { useColors, Radius } from '../constants/theme';
 import { useTheme } from '../lib/theme';
 import { useLang } from '../lib/lang';
 import { syncPushToken, unregisterPushToken } from '../lib/notifications';
+import { apiFetch } from '../lib/api';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as WebBrowser from 'expo-web-browser';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -279,7 +280,7 @@ export default function HomeScreen() {
   const loadSubs = async (mail: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/manage/subscriptions?email=${encodeURIComponent(mail)}`);
+      const res = await apiFetch(`${API_BASE}/api/manage/subscriptions?email=${encodeURIComponent(mail)}`);
       const data = await res.json();
       setSubs(Array.isArray(data) ? data : []);
       await computeHighlights(Array.isArray(data) ? data : []);
@@ -332,7 +333,7 @@ export default function HomeScreen() {
   const subscribe = async (d: string, email: string, silent = false): Promise<boolean> => {
     if (!silent) setSubscribing(true);
     try {
-      const res = await fetch(`${API_BASE}/api/manage/subscribe`, {
+      const res = await apiFetch(`${API_BASE}/api/manage/subscribe`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain: d, email, lang }),
       });
@@ -556,6 +557,9 @@ export default function HomeScreen() {
   };
 
   const logout = async () => {
+    // Dissocie le push AVANT de révoquer la session : cet appel porte encore un
+    // Bearer valide (sinon il serait journalisé « bearer invalide » côté serveur).
+    await unregisterPushToken();
     // Révoque la session côté serveur ; un échec réseau n'empêche pas la
     // déconnexion locale (la session expirera, purgée par le cron).
     try {
@@ -566,7 +570,6 @@ export default function HomeScreen() {
         });
       }
     } catch { /* hors ligne : on continue */ }
-    await unregisterPushToken();
     await AsyncStorage.removeItem('doomname_email');
     await AsyncStorage.removeItem('doomname_session');
     setUserEmail(''); setSubs([]); setUiFilter('active'); setFilter('active'); setFilterOpen(false);
@@ -576,7 +579,7 @@ export default function HomeScreen() {
   const toggleSub = useCallback(async (id: number, currentActive: boolean) => {
     setSubs(prev => prev.map(s => s.id === id ? { ...s, active: !currentActive } : s));
     try {
-      await fetch(`${API_BASE}/api/manage/subscription/${id}/toggle?email=${encodeURIComponent(userEmail)}`, { method: 'PATCH' });
+      await apiFetch(`${API_BASE}/api/manage/subscription/${id}/toggle?email=${encodeURIComponent(userEmail)}`, { method: 'PATCH' });
     } catch {
       setSubs(prev => prev.map(s => s.id === id ? { ...s, active: currentActive } : s));
     }
@@ -586,7 +589,7 @@ export default function HomeScreen() {
   const deleteSub = useCallback(async (id: number) => {
     setSubs(prev => prev.filter(s => s.id !== id));
     try {
-      await fetch(`${API_BASE}/api/manage/subscription/${id}?email=${encodeURIComponent(userEmail)}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE}/api/manage/subscription/${id}?email=${encodeURIComponent(userEmail)}`, { method: 'DELETE' });
     } catch { if (userEmail) loadSubs(userEmail); }
   }, [userEmail]);
 
