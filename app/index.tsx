@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, Image,
   StyleSheet, ActivityIndicator,
   ScrollView, Modal, FlatList, Keyboard, RefreshControl, InteractionManager,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Notifications from 'expo-notifications';
@@ -19,6 +20,7 @@ import { useLang } from '../lib/lang';
 import { syncPushToken, unregisterPushToken } from '../lib/notifications';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as WebBrowser from 'expo-web-browser';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
 
 const FILTER_ANIM = { entering: FadeIn.duration(160), exiting: FadeOut.duration(140) };
@@ -43,6 +45,16 @@ const GOOGLE_WEB_CLIENT_ID: string = (
   process.env.GOOGLE_WEB_CLIENT_ID ||
   ''
 );
+
+// Sign in with Apple : activé par APPLE_SIGNIN_ENABLED=1 au build EAS
+// (→ app.config.js → extra.appleSignInEnabled). Mêmes emplacements que ci-dessus.
+const APPLE_SIGNIN_ENABLED: boolean = !!(
+  (Constants.expoConfig?.extra as any)?.appleSignInEnabled ||
+  ((Constants as any).manifest2?.extra?.expoClient?.extra?.appleSignInEnabled)
+);
+// Nom complet Apple en attente d'envoi : Apple ne le fournit qu'à la PREMIÈRE
+// autorisation. Si l'appel backend échoue, on le garde pour la tentative suivante.
+const APPLE_PENDING_NAME_KEY = 'doomname_apple_pending_name';
 
 // Ligne d'alerte avec swipe progressif (Reanimated) :
 //  • glissé vers la GAUCHE → activer/désactiver ; vers la DROITE → supprimer.
@@ -213,8 +225,14 @@ export default function HomeScreen() {
     }
   }, [params.flash, params.flashType]);
 
-  // Rafraîchit au focus de l'écran.
-  useFocusEffect(useCallback(() => { if (userEmail) loadSubs(userEmail); }, [userEmail]));
+  // Rafraîchit au focus de l'écran. Relit l'identité stockée : si le compte a été
+  // supprimé depuis les réglages, l'écran repasse à l'état déconnecté.
+  useFocusEffect(useCallback(() => {
+    AsyncStorage.getItem('doomname_email').then(mail => {
+      if (mail) loadSubs(mail);
+      else if (userEmail) { setUserEmail(''); setSubs([]); }
+    });
+  }, [userEmail]));
 
   // Fondu doux de la liste pendant le (bref) recalcul de filtre.
   useEffect(() => {
@@ -373,10 +391,14 @@ export default function HomeScreen() {
   };
 
   // ─── Connexion ─────────────────────────────────────────────────────────────
-  // Finalisation commune à TOUS les canaux (magic link, Google, GitHub) :
+  // Finalisation commune à TOUS les canaux (magic link, Google, GitHub, Apple) :
   // l'email vérifié devient l'identité locale, exactement comme le magic link.
-  const completeLogin = async (email: string) => {
+  // Le jeton de session (s'il est renvoyé) authentifie les actions sensibles,
+  // comme la suppression de compte.
+  const completeLogin = async (email: string, sessionToken?: string | null) => {
     await AsyncStorage.setItem('doomname_email', email);
+    if (sessionToken) await AsyncStorage.setItem('doomname_session', sessionToken);
+    else await AsyncStorage.removeItem('doomname_session');
     setUserEmail(email);
     setLoginOpen(false); setLoginStep('email'); setLoginEmail(''); setLoginToken(''); setLoginError('');
     syncPushToken(email);
@@ -406,7 +428,9 @@ export default function HomeScreen() {
     if (!GOOGLE_WEB_CLIENT_ID) { setLoginError(t('login.err_server')); return; }
     setLoginError(''); setLoginLoading(true);
     try {
-      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      if (Platform.OS === 'android') {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      }
       const info = await GoogleSignin.signIn();
       const idToken = (info as any)?.data?.idToken ?? (info as any)?.idToken;
       if (!idToken) throw new Error('no-id-token');
@@ -415,10 +439,58 @@ export default function HomeScreen() {
         body: JSON.stringify({ idToken }),
       });
       const data = await res.json();
-      if (data.success) await completeLogin(data.email);
+      if (data.success) await completeLogin(data.email, data.sessionToken);
       else setLoginError(t('login.err_invalid'));
     } catch (e: any) {
       if (e?.code === statusCodes.SIGN_IN_CANCELLED || e?.code === statusCodes.IN_PROGRESS) { /* silencieux */ }
+      else setLoginError(t('login.err_server'));
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  // Sign in with Apple : visible seulement sur iOS, si le service est disponible
+  // et si APPLE_SIGNIN_ENABLED est actif. Sinon le bouton n'est pas rendu.
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !APPLE_SIGNIN_ENABLED) return;
+    AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+  }, []);
+
+  const loginWithApple = async () => {
+    setLoginError(''); setLoginLoading(true);
+    try {
+      const cred = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!cred.identityToken) throw new Error('no-identity-token');
+      // Nom et email : fournis UNIQUEMENT à la première autorisation → transmis
+      // tout de suite au backend qui les persiste. Le nom est aussi gardé en local
+      // jusqu'à un appel réussi (filet si le réseau échoue à ce moment précis).
+      const nameNow = [cred.fullName?.givenName, cred.fullName?.familyName].filter(Boolean).join(' ').trim();
+      if (nameNow) await AsyncStorage.setItem(APPLE_PENDING_NAME_KEY, nameNow);
+      const fullName = nameNow || (await AsyncStorage.getItem(APPLE_PENDING_NAME_KEY)) || undefined;
+      const res = await fetch(`${API_BASE}/api/auth/apple`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identityToken: cred.identityToken,
+          authorizationCode: cred.authorizationCode || undefined,
+          fullName,
+          email: cred.email || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await AsyncStorage.removeItem(APPLE_PENDING_NAME_KEY);
+        await completeLogin(data.email, data.sessionToken);
+      } else {
+        setLoginError(res.status === 401 ? t('login.err_invalid') : t('login.err_server'));
+      }
+    } catch (e: any) {
+      if (e?.code === 'ERR_REQUEST_CANCELED') { /* annulé par l'utilisateur : silencieux */ }
       else setLoginError(t('login.err_server'));
     } finally {
       setLoginLoading(false);
@@ -474,7 +546,7 @@ export default function HomeScreen() {
     try {
       const res = await fetch(`${API_BASE}/api/auth/verify?token=${tok}`);
       const data = await res.json();
-      if (data.success) await completeLogin(data.email);
+      if (data.success) await completeLogin(data.email, data.sessionToken);
       else setLoginError(t('login.err_invalid'));
     } catch {
       setLoginError(t('login.err_verify'));
@@ -486,6 +558,7 @@ export default function HomeScreen() {
   const logout = async () => {
     await unregisterPushToken();
     await AsyncStorage.removeItem('doomname_email');
+    await AsyncStorage.removeItem('doomname_session');
     setUserEmail(''); setSubs([]); setUiFilter('active'); setFilter('active'); setFilterOpen(false);
   };
 
@@ -627,7 +700,7 @@ export default function HomeScreen() {
 
       {/* Corps : suggestions (focus) OU liste / bouton connexion */}
       {searchFocused ? (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom }} keyboardShouldPersistTaps="handled">
           {subscribeMsg ? (
             <View style={[s.feedbackBox, {
               backgroundColor: subscribeMsg.startsWith('✅') ? c.successDim : c.dangerDim,
@@ -754,7 +827,7 @@ export default function HomeScreen() {
                       data={visibleSubs}
                       keyExtractor={keyExtractor}
                       renderItem={renderItem}
-                      contentContainerStyle={{ padding: 16, gap: 10, flexGrow: 1 }}
+                      contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom, gap: 10, flexGrow: 1 }}
                       keyboardShouldPersistTaps="handled"
                       onEndReached={loadMore}
                       onEndReachedThreshold={0.5}
@@ -794,6 +867,7 @@ export default function HomeScreen() {
 
       {/* Modale : email pour abonnement */}
       <Modal visible={showEmailModal} transparent animationType="fade">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={s.modalOverlay}>
           <View style={[s.modalBox, { backgroundColor: c.surface, borderColor: c.border }]}>
             <Text style={[s.modalTitle, { color: c.text }]}>{t('emailModal.title')}</Text>
@@ -804,6 +878,7 @@ export default function HomeScreen() {
                 placeholder={t('common.email_placeholder')} placeholderTextColor={c.textDim}
                 value={emailInput} onChangeText={setEmailInput}
                 autoCapitalize="none" keyboardType="email-address"
+                textContentType="emailAddress" autoComplete="email"
               />
             </View>
             <TouchableOpacity style={[s.loginBtn, { backgroundColor: c.accent }]} onPress={confirmEmail}>
@@ -814,16 +889,30 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Modale : connexion magic link */}
       <Modal visible={loginOpen} transparent animationType="fade">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={s.modalOverlay}>
           <View style={[s.modalBox, { backgroundColor: c.surface, borderColor: c.border }]}>
             {loginStep === 'email' ? (
               <>
                 <Text style={[s.modalTitle, { color: c.text }]}>{t('login.title')}</Text>
                 <Text style={[s.modalSub, { color: c.textMuted }]}>{t('login.subtitle')}</Text>
+                {appleAvailable ? (
+                  // Composant natif Apple (specs visuelles imposées), placé en premier.
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                    buttonStyle={dark
+                      ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                      : AppleAuthentication.AppleAuthenticationButtonStyle.WHITE_OUTLINE}
+                    cornerRadius={Radius.md}
+                    style={s.appleBtn}
+                    onPress={() => { if (!loginLoading) loginWithApple(); }}
+                  />
+                ) : null}
                 {GOOGLE_WEB_CLIENT_ID ? (
                   <TouchableOpacity onPress={loginWithGoogle} disabled={loginLoading}
                     style={[s.oauthBtn, { borderColor: c.borderMd, backgroundColor: c.surface2 }]}>
@@ -847,6 +936,7 @@ export default function HomeScreen() {
                     placeholder={t('common.email_placeholder')} placeholderTextColor={c.textDim}
                     value={loginEmail} onChangeText={setLoginEmail}
                     autoCapitalize="none" keyboardType="email-address"
+                    textContentType="emailAddress" autoComplete="email"
                   />
                 </View>
                 <TouchableOpacity style={[s.loginBtn, { backgroundColor: c.accent }]} onPress={requestMagicLink} disabled={loginLoading}>
@@ -863,6 +953,7 @@ export default function HomeScreen() {
                     placeholder={t('login.token_placeholder')} placeholderTextColor={c.textDim}
                     value={loginToken} onChangeText={setLoginToken}
                     autoCapitalize="none" autoCorrect={false}
+                    textContentType="oneTimeCode"
                   />
                 </View>
                 <TouchableOpacity style={[s.loginBtn, { backgroundColor: c.accent }]} onPress={() => verifyToken()} disabled={loginLoading}>
@@ -876,6 +967,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -935,6 +1027,7 @@ const s = StyleSheet.create({
 
   loginBtn: { height: 48, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   loginBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  appleBtn: { width: '100%', height: 48, marginBottom: 10 },
   oauthBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: 48, borderRadius: Radius.md, borderWidth: 1, marginBottom: 10 },
   oauthBtnText: { fontWeight: '600', fontSize: 15 },
   oauthSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 6 },

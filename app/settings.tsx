@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ActivityIndicator, ScrollView, Alert, Switch, Linking
+  StyleSheet, ActivityIndicator, ScrollView, Alert, Switch, Linking, Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -20,6 +20,7 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const [userEmail, setUserEmail] = useState('');
+  const [sessionToken, setSessionToken] = useState('');
   const [emailAlertsEnabled, setEmailAlertsEnabled] = useState(true);
   const [graceAlertsEnabled, setGraceAlertsEnabled] = useState(true);
 
@@ -29,6 +30,7 @@ export default function SettingsScreen() {
   const [deleteErr, setDeleteErr] = useState('');
 
   useEffect(() => {
+    AsyncStorage.getItem('doomname_session').then(tok => { if (tok) setSessionToken(tok); });
     AsyncStorage.getItem('doomname_email').then(saved => {
       if (saved) {
         setUserEmail(saved);
@@ -56,8 +58,6 @@ export default function SettingsScreen() {
   const openFeedbackMail = async () => {
     const url = 'mailto:contact@dahu-concept.fr?subject=DoomName%20-%20Retour&body=Type%20de%20retour%20(bug%20/%20id%C3%A9e)%20:%0A%0ADescription%20:%0A';
     try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) throw new Error('unsupported');
       await Linking.openURL(url);
     } catch {
       Alert.alert(t('settings.feedback_no_mail_title'), t('settings.feedback_no_mail_msg'));
@@ -70,7 +70,8 @@ export default function SettingsScreen() {
   };
 
   const requestDeletion = () => {
-    const e = deleteEmail.trim().toLowerCase();
+    // Connecté : e-mail du compte (non modifiable). Sinon : saisie libre.
+    const e = (userEmail || deleteEmail).trim().toLowerCase();
     if (!e) return;
     Alert.alert(
       t('settings.delete_confirm_title'),
@@ -87,13 +88,24 @@ export default function SettingsScreen() {
     setDeleteMsg('');
     setDeleteErr('');
     try {
+      // Avec un jeton de session, le backend supprime immédiatement le compte de
+      // cette session ; sans jeton, il envoie un e-mail de confirmation.
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
       const res = await fetch(`${API_BASE}/api/account/delete-request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ email })
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.deleted) {
+        // Suppression effective : on efface l'identité locale et on revient à l'accueil.
+        await AsyncStorage.multiRemove(['doomname_email', 'doomname_session']);
+        setUserEmail(''); setSessionToken('');
+        Alert.alert(t('settings.delete_done_title'), t('settings.delete_done_msg'), [
+          { text: 'OK', onPress: () => router.replace('/') },
+        ]);
+      } else if (data.success) {
         setDeleteMsg(t('settings.delete_sent'));
         setDeleteEmail('');
       } else {
@@ -207,6 +219,8 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Masqué sur iOS : guideline App Store 3.1.1 (pas de lien vers un paiement externe). */}
+      {Platform.OS !== 'ios' && (
       <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
         <Text style={[s.sectionTitle, { color: c.accent }]}>{t('settings.section_support')}</Text>
         <Text style={[s.info, { color: c.textMuted, marginBottom: 4 }]}>{t('settings.support_desc')}</Text>
@@ -233,16 +247,26 @@ export default function SettingsScreen() {
             : <Text style={{ color: c.textDim, fontSize: 12 }}>{t('settings.support_soon')}</Text>}
         </TouchableOpacity>
       </View>
+      )}
 
       <View style={[s.section, { backgroundColor: c.surface, borderColor: c.border }]}>
         <Text style={[s.sectionTitle, { color: c.danger }]}>{t('settings.section_delete')}</Text>
-        <Text style={[s.info, { color: c.textMuted, marginBottom: 12 }]}>{t('settings.delete_desc')}</Text>
-        <TextInput
-          style={inputStyle} placeholder={t('common.email_placeholder')}
-          placeholderTextColor={c.textDim}
-          value={deleteEmail} onChangeText={setDeleteEmail}
-          autoCapitalize="none" keyboardType="email-address"
-        />
+        <Text style={[s.info, { color: c.textMuted, marginBottom: 12 }]}>
+          {t(sessionToken ? 'settings.delete_desc_auth' : 'settings.delete_desc')}
+        </Text>
+        {userEmail ? (
+          <TextInput
+            style={[inputStyle, { opacity: 0.7 }]}
+            value={userEmail} editable={false} selectTextOnFocus={false}
+          />
+        ) : (
+          <TextInput
+            style={inputStyle} placeholder={t('common.email_placeholder')}
+            placeholderTextColor={c.textDim}
+            value={deleteEmail} onChangeText={setDeleteEmail}
+            autoCapitalize="none" keyboardType="email-address"
+          />
+        )}
         <TouchableOpacity style={[s.button, { backgroundColor: c.danger }]} onPress={requestDeletion} disabled={deleting}>
           {deleting ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>{t('settings.delete_btn')}</Text>}
         </TouchableOpacity>
