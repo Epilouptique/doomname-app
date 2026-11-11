@@ -45,6 +45,7 @@ export default {
     subtitle: 'Sign in with Google, GitHub, or an email link.',
     continue_google: 'Continue with Google',
     continue_github: 'Continue with GitHub',
+    apple_share_hint: 'Choose "Share My Email" if you already have alerts.',
     or: 'or',
     send_link: 'Send the link',
     sent_title: 'Link sent',

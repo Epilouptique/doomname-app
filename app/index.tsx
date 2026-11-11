@@ -556,6 +556,16 @@ export default function HomeScreen() {
   };
 
   const logout = async () => {
+    // Révoque la session côté serveur ; un échec réseau n'empêche pas la
+    // déconnexion locale (la session expirera, purgée par le cron).
+    try {
+      const tok = await AsyncStorage.getItem('doomname_session');
+      if (tok) {
+        await fetch(`${API_BASE}/api/auth/logout`, {
+          method: 'POST', headers: { Authorization: `Bearer ${tok}` },
+        });
+      }
+    } catch { /* hors ligne : on continue */ }
     await unregisterPushToken();
     await AsyncStorage.removeItem('doomname_email');
     await AsyncStorage.removeItem('doomname_session');
@@ -912,6 +922,13 @@ export default function HomeScreen() {
                     style={s.appleBtn}
                     onPress={() => { if (!loginLoading) loginWithApple(); }}
                   />
+                ) : null}
+                {appleAvailable ? (
+                  // « Masquer mon adresse » crée un relais @privaterelay : un compte
+                  // existant (alertes liées à l'e-mail réel) ne serait pas retrouvé.
+                  <Text style={{ color: c.textDim, fontSize: 12, textAlign: 'center', marginTop: -4, marginBottom: 10 }}>
+                    {t('login.apple_share_hint')}
+                  </Text>
                 ) : null}
                 {GOOGLE_WEB_CLIENT_ID ? (
                   <TouchableOpacity onPress={loginWithGoogle} disabled={loginLoading}
