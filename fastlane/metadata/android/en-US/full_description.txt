@@ -1,0 +1,24 @@
+DoomName is a free, open-source companion app for doomname.com, a domain
+name availability monitoring service.
+
+Enter a domain name, and DoomName checks its availability in real time
+against the registry (WHOIS). If it's already taken, add a watch: DoomName
+checks it periodically and e-mails you the moment it becomes free again —
+this is the app's main feature, so you never miss an expired domain dropping.
+
+Features:
+* Instant availability check, with suggestions across common TLDs
+  (.com, .io, .net, .org...) as you type
+* Manage your watched domains: filter by active/paused, search, pagination
+* Sign in with a passwordless magic link (sent by e-mail), or with a GitHub
+  account
+* Light and dark theme, follows the system setting
+* No ads, no trackers, no analytics
+
+This F-Droid build does not include Google Sign-In or push notifications,
+both of which require proprietary Google Play Services / Firebase components.
+E-mail alerts — the app's main feature — are unaffected and work exactly the
+same as on the Play Store release. Sign in with a magic link or a GitHub
+account instead.
+
+The backend and web app are open source too: https://github.com/Epilouptique

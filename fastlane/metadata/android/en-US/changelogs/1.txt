@@ -1,0 +1,2 @@
+First F-Droid release: domain name availability checks, watchlist
+management, e-mail alerts, magic-link and GitHub sign-in.
