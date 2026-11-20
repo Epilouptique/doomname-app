@@ -9,15 +9,25 @@ const API_BASE = 'https://domainwatch-production-1943.up.railway.app';
 const PUSH_TOKEN_KEY = 'doomname_push_token';
 const EMAIL_KEY = 'doomname_email';
 
+// Désactivé sur le variant F-Droid (app.config.js, extra.pushNotificationsEnabled) :
+// pas de google-services.json réel disponible pour un build reproductible depuis
+// les sources publiques. Les alertes par e-mail restent le canal principal, actif
+// pour tout le monde. Par défaut (hors F-Droid) : actif.
+const PUSH_ENABLED: boolean = !!(
+  (Constants.expoConfig?.extra as any)?.pushNotificationsEnabled ?? true
+);
+
 // Affichage des notifications reçues pendant que l'app est au premier plan.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+if (PUSH_ENABLED) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 /**
  * Demande la permission (au 1er lancement) et récupère le token push Expo.
@@ -25,6 +35,7 @@ Notifications.setNotificationHandler({
  * Le token est mis en cache dans AsyncStorage pour être réutilisé.
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
+  if (!PUSH_ENABLED) return null;
   if (Platform.OS === 'web') return null;
   if (!Device.isDevice) return null; // les push ne marchent pas sur simulateur
 
@@ -64,6 +75,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
  * À appeler au démarrage (si déjà connecté) et juste après une connexion.
  */
 export async function syncPushToken(email?: string): Promise<void> {
+  if (!PUSH_ENABLED) return;
   if (Platform.OS === 'web') return;
   const mail = email ?? (await AsyncStorage.getItem(EMAIL_KEY));
   if (!mail) return; // pas encore connecté : on enverra le token à la connexion
@@ -89,6 +101,7 @@ export async function syncPushToken(email?: string): Promise<void> {
  * localement : il pourra être réassocié à un autre email plus tard).
  */
 export async function unregisterPushToken(): Promise<void> {
+  if (!PUSH_ENABLED) return;
   if (Platform.OS === 'web') return;
   const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
   if (!token) return;
