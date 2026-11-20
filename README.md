@@ -4,6 +4,11 @@ Application mobile officielle de [DoomName](https://www.doomname.com), service d
 
 Disponible sur le **Google Play Store** (test interne / test ouvert).
 
+Un variant **F-Droid** (sans dépendance Google Play Services / Firebase —
+connexion Google et notifications push désactivées, tout le reste identique)
+est prêt côté code et en cours de soumission au dépôt F-Droid ; voir
+[`FDROID.md`](./FDROID.md) pour le détail et l'état d'avancement.
+
 ## Fonctionnalités
 
 - **Vérification de disponibilité** d'un domaine avec suggestions dynamiques d'extensions courantes (.com, .io, .studio…) pendant la saisie
