@@ -38,6 +38,13 @@ module.exports = () => {
     },
     android: {
       package: 'fr.dahuconcept.doomname',
+      // versionCode : sur le build Play Store, EAS le gère à distance
+      // (autoIncrement) — ne rien fixer ici le laisse à sa valeur par défaut
+      // habituelle. F-Droid build depuis les sources, sans accès à ce
+      // compteur distant : un versionCode fixe et déterministe est donc requis
+      // pour ce variant. Suit sa propre numérotation, incrémentée à la main à
+      // chaque nouvelle release F-Droid (indépendante du Play Store).
+      versionCode: IS_FDROID ? 1 : undefined,
       // Build F-Droid : ni Connexion Google ni notifications push (plugins
       // exclus ci-dessous) → aucun besoin du fichier Firebase, donc aucun
       // plugin Gradle google-services appliqué (zéro dépendance Google dans
